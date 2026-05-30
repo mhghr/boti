@@ -1,0 +1,202 @@
+import asyncio
+import sys
+from datetime import datetime, timedelta
+
+from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest
+
+from database import SessionLocal
+from models import Server, ServiceType, WireGuardConfig, Plan, User
+from wireguard import sync_wireguard_usage_counters, disable_expired_or_exhausted_configs, delete_wireguard_peer
+
+ONE_GB_IN_BYTES = 1 * (1024 ** 3)
+TEST_ACCOUNT_PLAN_NAME = "اکانت تست"
+
+
+async def org_wallet_billing_worker(bot: Bot):
+    while True:
+        db = SessionLocal()
+        try:
+            now = datetime.utcnow()
+            users = db.query(User).filter(User.is_organization_customer == True).all()
+            for user in users:
+                last_charge_at = user.org_last_settlement_at
+                if not last_charge_at:
+                    user.org_last_settlement_at = now
+                    total_usage = sum((c.cumulative_rx_bytes or 0) + (c.cumulative_tx_bytes or 0) for c in db.query(WireGuardConfig).filter(WireGuardConfig.user_telegram_id == user.telegram_id).all()) + (user.org_deleted_traffic_bytes or 0)
+                    user.org_last_billed_usage_bytes = total_usage
+                    continue
+
+                if (now - last_charge_at) >= timedelta(days=2):
+                    total_usage = sum((c.cumulative_rx_bytes or 0) + (c.cumulative_tx_bytes or 0) for c in db.query(WireGuardConfig).filter(WireGuardConfig.user_telegram_id == user.telegram_id).all()) + (user.org_deleted_traffic_bytes or 0)
+                    delta_usage = max(total_usage - (user.org_last_billed_usage_bytes or 0), 0)
+                    charge_amount = int((delta_usage / (1024 ** 3)) * (user.org_price_per_gb or 0))
+                    user.wallet_balance = (user.wallet_balance or 0) - charge_amount
+                    user.org_last_billed_usage_bytes = total_usage
+                    user.org_last_settlement_at = now
+
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"Org wallet billing worker error: {e}", file=sys.stderr)
+        finally:
+            db.close()
+
+        await asyncio.sleep(180)
+
+def _get_wireguard_servers(db):
+    wireguard_type = db.query(ServiceType).filter(ServiceType.code == "wireguard").first()
+    if not wireguard_type:
+        return []
+    return db.query(Server).filter(
+        Server.service_type_id == wireguard_type.id,
+        Server.is_active == True,
+    ).all()
+
+
+async def notify_plan_thresholds_worker(bot: Bot):
+    while True:
+        db = SessionLocal()
+        try:
+            now = datetime.now()
+            configs = db.query(WireGuardConfig).filter(WireGuardConfig.status == "active").all()
+            for config in configs:
+                plan = db.query(Plan).filter(Plan.id == config.plan_id).first() if config.plan_id else None
+                duration_days = config.duration_days if config.duration_days is not None else (plan.duration_days if plan else None)
+                traffic_limit_gb = config.traffic_limit_gb if config.traffic_limit_gb is not None else (plan.traffic_gb if plan else None)
+                if not duration_days and not traffic_limit_gb:
+                    continue
+
+                expires_at = config.expires_at or (config.created_at + timedelta(days=(duration_days or 0)))
+                plan_traffic_bytes = (traffic_limit_gb or 0) * (1024 ** 3)
+                consumed_bytes = (config.cumulative_rx_bytes or 0) + (config.cumulative_tx_bytes or 0)
+                remaining_bytes = max(plan_traffic_bytes - consumed_bytes, 0)
+
+                if not config.threshold_alert_sent and remaining_bytes <= ONE_GB_IN_BYTES:
+                    try:
+                        await bot.send_message(
+                            chat_id=int(config.user_telegram_id),
+                            text=(
+                                "⚠️ ترافیک سرویس شما رو به اتمام است.\n"
+                                "کمتر از ۱ گیگابایت از حجم پلن شما باقی مانده است.\n"
+                                "لطفاً برای تمدید یا خرید پلن جدید اقدام کنید."
+                            )
+                        )
+                        config.low_traffic_alert_sent = True
+                        config.expiry_alert_sent = True
+                        config.threshold_alert_sent = True
+                    except Exception as e:
+                        print(f"Low traffic notify failed for {config.user_telegram_id}: {e}", file=sys.stderr)
+
+                days_left = (expires_at - now).total_seconds() / 86400
+                if not config.threshold_alert_sent and 0 <= days_left <= 1:
+                    try:
+                        await bot.send_message(
+                            chat_id=int(config.user_telegram_id),
+                            text=(
+                                "⏳ پلن شما رو به اتمام است.\n"
+                                "کمتر از ۱ روز تا پایان اعتبار سرویس شما باقی مانده است.\n"
+                                "لطفاً برای تمدید سرویس اقدام کنید."
+                            )
+                        )
+                        config.low_traffic_alert_sent = True
+                        config.expiry_alert_sent = True
+                        config.threshold_alert_sent = True
+                    except Exception as e:
+                        print(f"Expiry notify failed for {config.user_telegram_id}: {e}", file=sys.stderr)
+
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"Threshold notify worker error: {e}", file=sys.stderr)
+        finally:
+            db.close()
+
+        await asyncio.sleep(180)
+
+
+async def cleanup_expired_test_accounts_worker(bot: Bot):
+    while True:
+        db = SessionLocal()
+        try:
+            now = datetime.now()
+            test_plan = db.query(Plan).filter(Plan.name == TEST_ACCOUNT_PLAN_NAME).first()
+            if not test_plan:
+                await asyncio.sleep(180)
+                continue
+
+            configs = db.query(WireGuardConfig).filter(
+                WireGuardConfig.status.in_(["active", "expired"]),
+                WireGuardConfig.plan_id == test_plan.id,
+            ).all()
+
+            for config in configs:
+                expires_at = config.expires_at or (config.created_at + timedelta(days=test_plan.duration_days))
+                traffic_limit_gb = config.traffic_limit_gb if config.traffic_limit_gb is not None else (test_plan.traffic_gb or 0)
+                traffic_limit_bytes = traffic_limit_gb * (1024 ** 3)
+                consumed_bytes = (config.cumulative_rx_bytes or 0) + (config.cumulative_tx_bytes or 0)
+                is_expired = bool(expires_at and expires_at <= now)
+                is_exhausted = bool(traffic_limit_bytes and consumed_bytes >= traffic_limit_bytes)
+
+                if not (is_expired or is_exhausted):
+                    continue
+
+                try:
+                    server = db.query(Server).filter(Server.id == config.server_id, Server.is_active == True).first()
+                    if server:
+                        delete_wireguard_peer(
+                            mikrotik_host=server.host,
+                            mikrotik_user=server.username,
+                            mikrotik_pass=server.password,
+                            mikrotik_port=server.api_port,
+                            wg_interface=server.wg_interface,
+                            client_ip=config.client_ip,
+                        )
+                except Exception as e:
+                    print(f"Test account peer delete failed ({config.client_ip}): {e}", file=sys.stderr)
+
+                user_tg_id = config.user_telegram_id
+                db.delete(config)
+                db.commit()
+
+                try:
+                    await bot.send_message(chat_id=int(user_tg_id), text="⛔ مهلت تست تمام شده است.")
+                except TelegramBadRequest as e:
+                    print(f"Test account notify failed for {user_tg_id}: {e}", file=sys.stderr)
+                except Exception as e:
+                    print(f"Unexpected notify error for {user_tg_id}: {e}", file=sys.stderr)
+
+        except Exception as e:
+            db.rollback()
+            print(f"Test account cleanup worker error: {e}", file=sys.stderr)
+        finally:
+            db.close()
+
+        await asyncio.sleep(180)
+
+
+async def usage_sync_worker():
+    while True:
+        db = SessionLocal()
+        try:
+            servers = _get_wireguard_servers(db)
+            for server in servers:
+                sync_wireguard_usage_counters(
+                    mikrotik_host=server.host,
+                    mikrotik_user=server.username,
+                    mikrotik_pass=server.password,
+                    mikrotik_port=server.api_port,
+                    wg_interface=server.wg_interface,
+                )
+                disable_expired_or_exhausted_configs(
+                    mikrotik_host=server.host,
+                    mikrotik_user=server.username,
+                    mikrotik_pass=server.password,
+                    mikrotik_port=server.api_port,
+                    wg_interface=server.wg_interface,
+                )
+        except Exception as e:
+            print(f"Usage sync worker error: {e}", file=sys.stderr)
+        finally:
+            db.close()
+        await asyncio.sleep(180)
