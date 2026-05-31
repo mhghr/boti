@@ -171,7 +171,12 @@ NGINX
 ln -sf "/etc/nginx/sites-available/${SERVICE_NAME}" "/etc/nginx/sites-enabled/${SERVICE_NAME}"
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
-systemctl reload nginx
+systemctl enable nginx
+if systemctl is-active --quiet nginx; then
+  systemctl reload nginx
+else
+  systemctl start nginx
+fi
 certbot --nginx --non-interactive --agree-tos --redirect -m "$SSL_EMAIL" -d "$DOMAIN"
 
 echo "[8/8] Starting services..."
