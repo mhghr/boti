@@ -13,6 +13,42 @@ VENV_DIR="$BOT_DIR/.venv"
 SERVICE_NAME="vpn-bot"
 ENV_FILE="$BOT_DIR/.env"
 
+install_single_session_guard() {
+  local guard_script="/usr/local/bin/ssh-single-session-check"
+  local pam_file="/etc/pam.d/sshd"
+  local pam_line="account required pam_exec.so quiet ${guard_script}"
+
+  cat > "$guard_script" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+user="${PAM_USER:-}"
+if [[ -z "$user" || "$user" == "root" ]]; then
+  exit 0
+fi
+
+if ! id "$user" >/dev/null 2>&1; then
+  exit 0
+fi
+
+session_count="$(ps -u "$user" -o args= 2>/dev/null | grep -Ec '^sshd: .+@')"
+if [[ "${session_count:-0}" -ge 1 ]]; then
+  echo "Only one active SSH session is allowed for this account." >&2
+  exit 1
+fi
+
+exit 0
+SCRIPT
+  chmod 755 "$guard_script"
+
+  if ! grep -Fqx "$pam_line" "$pam_file"; then
+    cp "$pam_file" "${pam_file}.bak.$(date +%s)"
+    printf '\n%s\n' "$pam_line" >> "$pam_file"
+  fi
+
+  systemctl reload ssh >/dev/null 2>&1 || systemctl reload sshd >/dev/null 2>&1 || true
+}
+
 ask_required() {
   local prompt="$1"
   local value=""
@@ -152,6 +188,9 @@ Environment=PYTHONUNBUFFERED=1
 [Install]
 WantedBy=multi-user.target
 SERVICE
+
+echo "[6.5/8] Enforcing single SSH session per account..."
+install_single_session_guard
 
 echo "[7/8] Configuring Nginx and SSL..."
 cat > "/etc/nginx/sites-available/${SERVICE_NAME}" <<NGINX

@@ -16,6 +16,42 @@ CARD_INFO_FILE="$BOT_DIR/card_info.txt"
 LEGACY_CARD_INFO_FILE="$REPO_ROOT/card_info.txt"
 TARGET_BRANCH="${1:-$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)}"
 
+install_single_session_guard() {
+  local guard_script="/usr/local/bin/ssh-single-session-check"
+  local pam_file="/etc/pam.d/sshd"
+  local pam_line="account required pam_exec.so quiet ${guard_script}"
+
+  cat > "$guard_script" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+user="${PAM_USER:-}"
+if [[ -z "$user" || "$user" == "root" ]]; then
+  exit 0
+fi
+
+if ! id "$user" >/dev/null 2>&1; then
+  exit 0
+fi
+
+session_count="$(ps -u "$user" -o args= 2>/dev/null | grep -Ec '^sshd: .+@')"
+if [[ "${session_count:-0}" -ge 1 ]]; then
+  echo "Only one active SSH session is allowed for this account." >&2
+  exit 1
+fi
+
+exit 0
+SCRIPT
+  chmod 755 "$guard_script"
+
+  if ! grep -Fqx "$pam_line" "$pam_file"; then
+    cp "$pam_file" "${pam_file}.bak.$(date +%s)"
+    printf '\n%s\n' "$pam_line" >> "$pam_file"
+  fi
+
+  systemctl reload ssh >/dev/null 2>&1 || systemctl reload sshd >/dev/null 2>&1 || true
+}
+
 if [[ -z "$TARGET_BRANCH" ]]; then
   echo "[ERROR] Could not detect target branch. Pass it as first argument."
   exit 1
@@ -95,11 +131,14 @@ fi
 "$PIP" check
 "$PIP" freeze > "$BOT_DIR/requirements.lock.txt"
 
-echo "[5/6] Restarting systemd service..."
+echo "[5/7] Enforcing single SSH session per account..."
+install_single_session_guard
+
+echo "[6/7] Restarting systemd service..."
 systemctl daemon-reload
 systemctl restart "$SERVICE_NAME"
 
-echo "[6/6] Service status"
+echo "[7/7] Service status"
 systemctl --no-pager --full status "$SERVICE_NAME" || true
 
 echo "✅ Update completed successfully on branch: $TARGET_BRANCH"
