@@ -664,3 +664,12 @@ def get_connection_apps_message() -> str:
         "برنامه‌های مورد نیاز\n\n"
         "پس از دریافت لینک یا QR Code، آن را در برنامه خود اضافه کنید."
     )
+async def send_wireguard_config_file(sender, config_text: str, caption: str = None, chat_id: int = None):
+    if not config_text:
+        return
+    final_caption = caption or "Link"
+    message_text = f"{final_caption}\n\n<code>{config_text}</code>"
+    if chat_id:
+        await sender.send_message(chat_id=chat_id, text=message_text, parse_mode="HTML")
+    else:
+        await sender.answer(message_text, parse_mode="HTML")
