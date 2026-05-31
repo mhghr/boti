@@ -52,7 +52,7 @@ async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: s
         try:
             plans = db.query(Plan).filter(Plan.is_active == True).all()
             if plans:
-                await callback.message.answer("🔗 ساخت اکانت وایرگارد\n\nیکی از پلن‌های زیر را انتخاب کنید و یا پلن دلخواه بسازید:", reply_markup=get_create_account_keyboard(plans), parse_mode="HTML")
+                await callback.message.answer("🔗 ساخت اکانت\n\nیکی از پلن‌های زیر را انتخاب کنید و یا پلن دلخواه بسازید:", reply_markup=get_create_account_keyboard(plans), parse_mode="HTML")
             else:
                 await callback.message.answer("❌ پلن فعالی وجود ندارد. می‌توانید پلن دلخواه بسازید.", reply_markup=get_create_account_keyboard([]), parse_mode="HTML")
         finally:
@@ -68,9 +68,9 @@ async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: s
             if not plan:
                 await callback.message.answer("❌ پلن معتبر نیست.", parse_mode="HTML")
                 return
-            available_servers = get_available_servers_for_plan(db, plan.id)
+            available_servers = get_available_active_servers(db)
             if not available_servers:
-                await callback.message.answer("❌ ظرفیت سرورهای این پلن تکمیل است.", parse_mode="HTML")
+                await callback.message.answer("❌ هیچ سرور فعالی با ظرفیت خالی ثبت نشده است.", parse_mode="HTML")
                 return
             locations = _get_ordered_locations(available_servers)
             if location_index < 0 or location_index >= len(locations):
@@ -94,9 +94,9 @@ async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: s
             if not plan:
                 await callback.message.answer("❌ پلن یافت نشد یا غیرفعال است.", parse_mode="HTML")
                 return
-            available_servers = get_available_servers_for_plan(db, plan.id)
+            available_servers = get_available_active_servers(db)
             if not available_servers:
-                await callback.message.answer("❌ ظرفیت سرورهای این پلن تکمیل است.", parse_mode="HTML")
+                await callback.message.answer("❌ هیچ سرور فعالی با ظرفیت خالی ثبت نشده است.", parse_mode="HTML")
                 return
             locations = _get_ordered_locations(available_servers)
             if len(locations) > 1:
