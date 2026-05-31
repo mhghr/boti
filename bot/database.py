@@ -2,15 +2,37 @@
 Database connection and session management.
 """
 import os
+
 from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy import text
+from sqlalchemy.engine import URL
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv()
 
-from sqlalchemy import create_engine
-from sqlalchemy import text
-from sqlalchemy.orm import sessionmaker, declarative_base
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:123@localhost:5432/myvpn")
+def _build_database_url() -> str:
+    db_name = os.getenv("DB_NAME")
+    db_user = os.getenv("DB_USER")
+    db_pass = os.getenv("DB_PASS")
+    db_host = os.getenv("DB_HOST")
+    db_port = os.getenv("DB_PORT")
+
+    if all([db_name, db_user, db_pass is not None, db_host, db_port]):
+        return URL.create(
+            drivername="postgresql+psycopg2",
+            username=db_user,
+            password=db_pass,
+            host=db_host,
+            port=int(db_port),
+            database=db_name,
+        ).render_as_string(hide_password=False)
+
+    return os.getenv("DATABASE_URL", "postgresql://postgres:123@localhost:5432/myvpn")
+
+
+DATABASE_URL = _build_database_url()
 
 engine = create_engine(DATABASE_URL, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
