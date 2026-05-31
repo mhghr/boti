@@ -67,7 +67,7 @@ class Server(Base):
     name = Column(String, nullable=False)
     service_type_id = Column(Integer, ForeignKey("service_types.id"), nullable=False, index=True)
     host = Column(String, nullable=False)
-    api_port = Column(Integer, default=8728)
+    api_port = Column(Integer, default=22)
     username = Column(String, nullable=True)
     password = Column(String, nullable=True)
     wg_interface = Column(String, nullable=True)

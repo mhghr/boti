@@ -431,9 +431,9 @@ def get_server_field_prompt(field: str, step_num: int = None, total_steps: int =
     prompts = {
         "name": ("نام سرور را وارد کنید:", False),
         "host": ("IP/Host سرور را وارد کنید:", False),
-        "api_port": ("پورت API (مثلاً 8728 یا 22):", False),
-        "username": ("یوزرنیم API:", False),
-        "password": ("پسورد API:", False),
+        "api_port": ("پورت SSH سرور را وارد کنید. مثال: 22", False),
+        "username": ("یوزرنیم لاگین SSH سرور را وارد کنید:", False),
+        "password": ("پسورد لاگین SSH سرور را وارد کنید:", False),
         "wg_interface": ("نام اینترفیس وایرگارد:", False),
         "wg_server_public_key": ("Public Key سرور:", False),
         "wg_server_endpoint": ("Endpoint سرور:", False),

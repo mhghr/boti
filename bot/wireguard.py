@@ -269,7 +269,13 @@ def create_wireguard_account(
         }
     except Exception as e:
         logger.exception("SSH account creation failed")
-        return {"success": False, "error": str(e)}
+        error_text = str(e)
+        lowered = error_text.lower()
+        if "authentication failed" in lowered:
+            error_text = "احراز هویت SSH ناموفق بود. یوزرنیم، پسورد و پورت SSH سرور را در بخش مدیریت سرورها بررسی کنید."
+        elif "unable to connect" in lowered or "timed out" in lowered:
+            error_text = "اتصال SSH به سرور برقرار نشد. هاست/IP و پورت SSH سرور را بررسی کنید."
+        return {"success": False, "error": error_text}
     finally:
         if ssh:
             ssh.close()
