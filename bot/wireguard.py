@@ -242,11 +242,7 @@ def create_wireguard_account(
             f"useradd -m -s /bin/bash {shlex.quote(username)} 2>/dev/null "
             f"|| useradd -m -s /bin/sh {shlex.quote(username)}; "
             f"echo {shlex.quote(f'{username}:{password}')} | chpasswd; "
-            f"passwd -u {shlex.quote(username)} >/dev/null 2>&1 || true; "
-            f"test -d /etc/security/limits.d || mkdir -p /etc/security/limits.d; "
-            f"printf '%s - maxlogins 1\\n' {shlex.quote(username)} > /etc/security/limits.d/99-npvt-{shlex.quote(username)}.conf; "
-            f"grep -q 'pam_limits.so' /etc/pam.d/sshd 2>/dev/null || "
-            f"printf 'session required pam_limits.so\\n' >> /etc/pam.d/sshd 2>/dev/null || true"
+            f"passwd -u {shlex.quote(username)} >/dev/null 2>&1 || true"
         )
         exit_code, _, err = _run_privileged_command(ssh, create_cmd, server_login_password)
         if exit_code != 0:
@@ -347,8 +343,7 @@ def delete_wireguard_peer(mikrotik_host: str, mikrotik_user: str, mikrotik_pass:
         mikrotik_user,
         mikrotik_pass,
         client_ip,
-        f"userdel -r {shlex.quote(client_ip)} >/dev/null 2>&1 || userdel {shlex.quote(client_ip)}; "
-        f"rm -f /etc/security/limits.d/99-npvt-{shlex.quote(client_ip)}.conf 2>/dev/null || true",
+        f"userdel -r {shlex.quote(client_ip)} >/dev/null 2>&1 || userdel {shlex.quote(client_ip)}",
     )
 
 
