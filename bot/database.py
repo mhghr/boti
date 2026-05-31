@@ -158,16 +158,7 @@ def init_db():
         conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS capacity INTEGER DEFAULT 100"))
         conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE"))
 
-        conn.execute(text("""
-            INSERT INTO service_types (code, name, is_active, created_at)
-            VALUES
-                ('wireguard', 'SSH Tunnel', TRUE, NOW()),
-                ('v2ray', 'V2Ray', TRUE, NOW())
-            ON CONFLICT (code) DO NOTHING
-        """))
-        conn.execute(text("UPDATE service_types SET name = 'SSH Tunnel' WHERE code = 'wireguard'"))
-
-        # Backfill missing service_type_id values to WireGuard for old server rows
+        # Backfill missing service_type_id values only if a legacy wireguard type already exists
         conn.execute(text("""
             UPDATE servers
             SET service_type_id = st.id
@@ -206,14 +197,17 @@ def init_db():
         except Exception:
             pass
 
-        # Keep service type defaults present in case of partial startup failures
-        try:
-            conn.execute(text("""
-                INSERT INTO service_types (code, name, is_active, created_at)
-                VALUES
-                    ('wireguard', 'SSH Tunnel', TRUE, NOW()),
-                    ('v2ray', 'V2Ray', TRUE, NOW())
-                ON CONFLICT (code) DO NOTHING
-            """))
-        except Exception:
-            pass
+        # Remove legacy auto-seeded service types when they are unused.
+        conn.execute(text("""
+            DELETE FROM service_types st
+            WHERE st.code IN ('wireguard', 'v2ray')
+              AND NOT EXISTS (
+                  SELECT 1 FROM servers s WHERE s.service_type_id = st.id
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM plans p WHERE p.service_type_id = st.id
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM service_tutorials t WHERE t.service_type_id = st.id
+              )
+        """))
