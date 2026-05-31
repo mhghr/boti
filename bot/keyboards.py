@@ -749,3 +749,115 @@ def get_user_configs_keyboard(configs: list):
         buttons.append([InlineKeyboardButton(text=f"{cfg_name}", callback_data=f"mycfg_{cfg.id}")])
     buttons.append([InlineKeyboardButton(text="Back", callback_data="back_to_main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_admin_keyboard(pending_panel=None):
+    buttons = [
+        [InlineKeyboardButton(text="🖥️ پنل‌ها", callback_data="admin_panels"), InlineKeyboardButton(text="🔍 جستجو", callback_data="admin_search")],
+        [InlineKeyboardButton(text="📦 پلن ها", callback_data="admin_plans"), InlineKeyboardButton(text="💳 فیش‌های پرداخت", callback_data="admin_receipts")],
+        [InlineKeyboardButton(text="🎁 کد تخفیف", callback_data="admin_discount_create"), InlineKeyboardButton(text="🧩 انواع سرویس", callback_data="admin_service_types")],
+        [InlineKeyboardButton(text="🖧 مدیریت سرورها", callback_data="admin_servers"), InlineKeyboardButton(text="🔗 ساخت اکانت", callback_data="admin_create_account")],
+        [InlineKeyboardButton(text="🤝 نمایندگی‌ها", callback_data="admin_representatives"), InlineKeyboardButton(text="📚 آموزش", callback_data="admin_tutorials")],
+        [InlineKeyboardButton(text="💳 شماره کارت", callback_data="admin_card_settings"), InlineKeyboardButton(text="📱 لینک نرم‌افزارها", callback_data="admin_software_links")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_main")],
+    ]
+    if pending_panel:
+        buttons.insert(0, [InlineKeyboardButton(text=f"🔔 درخواست پنل جدید ({pending_panel.get('name', 'Unknown')})", callback_data="admin_pending_panel")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_admin_software_links_keyboard(links: dict[str, str]):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"🍎 iPhone: {links.get('ios', '-')}", callback_data="admin_software_ios")],
+        [InlineKeyboardButton(text=f"📱 Android: {links.get('android', '-')}", callback_data="admin_software_android")],
+        [InlineKeyboardButton(text=f"💻 Windows: {links.get('windows', '-')}", callback_data="admin_software_windows")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin")],
+    ])
+
+
+def get_software_links_keyboard(links: dict[str, str], include_back: bool = True):
+    buttons = [
+        [InlineKeyboardButton(text="🍎 آیفون (iPhone)", url=links.get("ios", ""))],
+        [InlineKeyboardButton(text="📱 اندروید", url=links.get("android", ""))],
+        [InlineKeyboardButton(text="💻 ویندوز", url=links.get("windows", ""))],
+    ]
+    if include_back:
+        buttons.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_main")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_admin_user_manage_keyboard(
+    user_id: int,
+    telegram_id: int,
+    full_name: str,
+    username: str,
+    wallet_balance: int,
+    joined_date: str,
+    is_member: bool,
+    is_admin: bool,
+    config_count: int,
+    is_org: bool = False,
+    is_blocked: bool = False,
+    show_wallet_actions: bool = False,
+    show_finance_panel: bool = False,
+    total_traffic_text: str = "-",
+    price_per_gb_text: str = "-",
+    debt_text: str = "-",
+    last_settlement_text: str = "-",
+    negative_limit_text: str = "0 تومان",
+):
+    block_label = "✅ رفع مسدودی کاربر" if is_blocked else "⛔ مسدود کردن کاربر"
+    buttons = [
+        [InlineKeyboardButton(text=f"🆔 یوزر آیدی: {telegram_id}", callback_data="admin_user_info_ro")],
+        [InlineKeyboardButton(text=f"👤 نام: {full_name}", callback_data="admin_user_info_ro")],
+        [InlineKeyboardButton(text=f"📛 نام کاربری: {username}", callback_data="admin_user_info_ro")],
+        [InlineKeyboardButton(text=f"💰 موجودی: {wallet_balance:,} تومان", callback_data=f"admin_user_wallet_actions_{user_id}")],
+        [InlineKeyboardButton(text=f"📅 تاریخ عضویت: {joined_date}", callback_data="admin_user_info_ro")],
+        [InlineKeyboardButton(text=f"🟢 وضعیت عضویت: {'فعال' if is_member else 'غیرفعال'}", callback_data="admin_user_info_ro")],
+        [InlineKeyboardButton(text=f"⚙️ ادمین: {'بله' if is_admin else 'خیر'}", callback_data="admin_user_info_ro")],
+        [InlineKeyboardButton(text=f"🔐 وضعیت دسترسی: {'مسدود' if is_blocked else 'فعال'}", callback_data="admin_user_info_ro")],
+        [InlineKeyboardButton(text=f"🔗 تعداد کانفیگ‌ها: {config_count}", callback_data="admin_user_info_ro")],
+        [InlineKeyboardButton(text="🔗 مشاهده کانفیگ‌ها", callback_data=f"admin_user_configs_{user_id}")],
+        [InlineKeyboardButton(text=block_label, callback_data=f"admin_user_block_toggle_{user_id}")],
+    ]
+    if show_wallet_actions:
+        buttons.append([
+            InlineKeyboardButton(text="➕ افزایش موجودی", callback_data=f"wallet_inc_{user_id}"),
+            InlineKeyboardButton(text="➖ کاهش موجودی", callback_data=f"wallet_dec_{user_id}"),
+        ])
+    buttons.append([InlineKeyboardButton(text=" بازگشت به جستجو", callback_data="admin_search"), InlineKeyboardButton(text="🏠 منوی مدیریت", callback_data="admin")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_configs_keyboard(configs: list, is_org_customer: bool = False):
+    buttons = []
+    for config in configs:
+        config_name = (config.plan_name or "").strip()
+        label = config_name or f"کانفیگ {config.id}"
+        buttons.append([InlineKeyboardButton(text=label, callback_data=f"cfg_view_{config.id}")])
+    buttons.append([InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="back_to_main")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_profile_keyboard(
+    first_name: str,
+    username: str,
+    wallet_balance: int,
+    configs_count: int,
+    active_configs: int,
+    joined_date: str,
+    member_status: str,
+    is_org_customer: bool = False,
+):
+    username_text = f"@{username}" if username else "ندارد"
+    buttons = [
+        [InlineKeyboardButton(text=f"👤 نام: {first_name}", callback_data="profile_ro")],
+        [InlineKeyboardButton(text=f"📛 نام کاربری: {username_text}", callback_data="profile_ro")],
+        [InlineKeyboardButton(text=f"💰 موجودی کیف پول: {wallet_balance:,} تومان", callback_data="profile_ro")],
+        [InlineKeyboardButton(text=f"🔐 تعداد کانفیگ‌ها: {configs_count}", callback_data="profile_ro")],
+        [InlineKeyboardButton(text=f"✅ کانفیگ‌های فعال: {active_configs}", callback_data="profile_ro")],
+        [InlineKeyboardButton(text=f"📅 تاریخ عضویت: {joined_date}", callback_data="profile_ro")],
+        [InlineKeyboardButton(text=f"📌 وضعیت عضویت: {member_status}", callback_data="profile_ro")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_main")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

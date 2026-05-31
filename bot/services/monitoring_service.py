@@ -6,43 +6,15 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 
 from database import SessionLocal
-from models import Server, ServiceType, WireGuardConfig, Plan, User
+from models import Server, ServiceType, WireGuardConfig, Plan
 from wireguard import sync_wireguard_usage_counters, disable_expired_or_exhausted_configs, delete_wireguard_peer
 
 ONE_GB_IN_BYTES = 1 * (1024 ** 3)
 TEST_ACCOUNT_PLAN_NAME = "اکانت تست"
 
 
-async def org_wallet_billing_worker(bot: Bot):
-    while True:
-        db = SessionLocal()
-        try:
-            now = datetime.utcnow()
-            users = db.query(User).filter(User.is_organization_customer == True).all()
-            for user in users:
-                last_charge_at = user.org_last_settlement_at
-                if not last_charge_at:
-                    user.org_last_settlement_at = now
-                    total_usage = sum((c.cumulative_rx_bytes or 0) + (c.cumulative_tx_bytes or 0) for c in db.query(WireGuardConfig).filter(WireGuardConfig.user_telegram_id == user.telegram_id).all()) + (user.org_deleted_traffic_bytes or 0)
-                    user.org_last_billed_usage_bytes = total_usage
-                    continue
-
-                if (now - last_charge_at) >= timedelta(days=2):
-                    total_usage = sum((c.cumulative_rx_bytes or 0) + (c.cumulative_tx_bytes or 0) for c in db.query(WireGuardConfig).filter(WireGuardConfig.user_telegram_id == user.telegram_id).all()) + (user.org_deleted_traffic_bytes or 0)
-                    delta_usage = max(total_usage - (user.org_last_billed_usage_bytes or 0), 0)
-                    charge_amount = int((delta_usage / (1024 ** 3)) * (user.org_price_per_gb or 0))
-                    user.wallet_balance = (user.wallet_balance or 0) - charge_amount
-                    user.org_last_billed_usage_bytes = total_usage
-                    user.org_last_settlement_at = now
-
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            print(f"Org wallet billing worker error: {e}", file=sys.stderr)
-        finally:
-            db.close()
-
-        await asyncio.sleep(180)
+def _supports_traffic_tracking(config: WireGuardConfig) -> bool:
+    return not str(config.public_key or "").startswith("npvt-ssh://")
 
 def _get_wireguard_servers(db):
     wireguard_type = db.query(ServiceType).filter(ServiceType.code == "wireguard").first()
@@ -64,15 +36,16 @@ async def notify_plan_thresholds_worker(bot: Bot):
                 plan = db.query(Plan).filter(Plan.id == config.plan_id).first() if config.plan_id else None
                 duration_days = config.duration_days if config.duration_days is not None else (plan.duration_days if plan else None)
                 traffic_limit_gb = config.traffic_limit_gb if config.traffic_limit_gb is not None else (plan.traffic_gb if plan else None)
-                if not duration_days and not traffic_limit_gb:
+                supports_traffic = _supports_traffic_tracking(config)
+                if not duration_days and (not traffic_limit_gb or not supports_traffic):
                     continue
 
                 expires_at = config.expires_at or (config.created_at + timedelta(days=(duration_days or 0)))
-                plan_traffic_bytes = (traffic_limit_gb or 0) * (1024 ** 3)
-                consumed_bytes = (config.cumulative_rx_bytes or 0) + (config.cumulative_tx_bytes or 0)
-                remaining_bytes = max(plan_traffic_bytes - consumed_bytes, 0)
+                plan_traffic_bytes = (traffic_limit_gb or 0) * (1024 ** 3) if supports_traffic else 0
+                consumed_bytes = ((config.cumulative_rx_bytes or 0) + (config.cumulative_tx_bytes or 0)) if supports_traffic else 0
+                remaining_bytes = max(plan_traffic_bytes - consumed_bytes, 0) if supports_traffic else 0
 
-                if not config.threshold_alert_sent and remaining_bytes <= ONE_GB_IN_BYTES:
+                if supports_traffic and not config.threshold_alert_sent and remaining_bytes <= ONE_GB_IN_BYTES:
                     try:
                         await bot.send_message(
                             chat_id=int(config.user_telegram_id),
@@ -136,7 +109,7 @@ async def cleanup_expired_test_accounts_worker(bot: Bot):
                 traffic_limit_bytes = traffic_limit_gb * (1024 ** 3)
                 consumed_bytes = (config.cumulative_rx_bytes or 0) + (config.cumulative_tx_bytes or 0)
                 is_expired = bool(expires_at and expires_at <= now)
-                is_exhausted = bool(traffic_limit_bytes and consumed_bytes >= traffic_limit_bytes)
+                is_exhausted = bool(_supports_traffic_tracking(config) and traffic_limit_bytes and consumed_bytes >= traffic_limit_bytes)
 
                 if not (is_expired or is_exhausted):
                     continue

@@ -35,6 +35,10 @@ TEST_ACCOUNT_PLAN_NAME = "اکانت تست"
 background_tasks = []
 
 
+def _supports_traffic_tracking(config: WireGuardConfig) -> bool:
+    return not str(config.public_key or "").startswith("npvt-ssh://")
+
+
 def _get_wireguard_servers(db):
     wireguard_type = db.query(ServiceType).filter(ServiceType.code == "wireguard").first()
     if not wireguard_type:
@@ -63,16 +67,18 @@ async def notify_plan_thresholds_worker():
                 if not config.plan_id:
                     continue
                 plan = db.query(Plan).filter(Plan.id == config.plan_id).first()
-                if not plan or not plan.duration_days or not plan.traffic_gb:
+                supports_traffic = _supports_traffic_tracking(config)
+                if not plan or (not plan.duration_days and (not plan.traffic_gb or not supports_traffic)):
                     continue
 
                 expires_at = config.expires_at or (config.created_at + timedelta(days=plan.duration_days))
-                plan_traffic_bytes = plan.traffic_gb * (1024 ** 3)
-                consumed_bytes = config.cumulative_rx_bytes or 0
-                remaining_bytes = max(plan_traffic_bytes - consumed_bytes, 0)
+                plan_traffic_bytes = (plan.traffic_gb or 0) * (1024 ** 3) if supports_traffic else 0
+                consumed_bytes = ((config.cumulative_rx_bytes or 0) + (config.cumulative_tx_bytes or 0)) if supports_traffic else 0
+                remaining_bytes = max(plan_traffic_bytes - consumed_bytes, 0) if supports_traffic else 0
                 days_left = (expires_at - now).total_seconds() / 86400
 
-                if not config.threshold_alert_sent and (remaining_bytes <= ONE_GB_IN_BYTES or 0 <= days_left <= 1):
+                is_near_traffic_end = supports_traffic and remaining_bytes <= ONE_GB_IN_BYTES
+                if not config.threshold_alert_sent and (is_near_traffic_end or 0 <= days_left <= 1):
                     try:
                         await bot.send_message(
                             chat_id=int(config.user_telegram_id),
@@ -107,8 +113,9 @@ async def cleanup_expired_test_accounts_worker():
             for config in configs:
                 expires_at = config.expires_at or (config.created_at + timedelta(days=test_plan.duration_days))
                 traffic_limit_bytes = (test_plan.traffic_gb or 0) * (1024 ** 3)
-                consumed_bytes = config.cumulative_rx_bytes or 0
-                if not ((expires_at and expires_at <= now) or (traffic_limit_bytes and consumed_bytes >= traffic_limit_bytes)):
+                consumed_bytes = ((config.cumulative_rx_bytes or 0) + (config.cumulative_tx_bytes or 0)) if _supports_traffic_tracking(config) else 0
+                is_exhausted = bool(_supports_traffic_tracking(config) and traffic_limit_bytes and consumed_bytes >= traffic_limit_bytes)
+                if not ((expires_at and expires_at <= now) or is_exhausted):
                     continue
                 try:
                     server = db.query(Server).filter(Server.id == config.server_id, Server.is_active == True).first()

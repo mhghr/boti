@@ -11,6 +11,24 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
         card_number, card_holder = get_card_info()
         await callback.message.answer("💳 مدیریت اطلاعات کارت", reply_markup=get_admin_card_keyboard(card_number, card_holder), parse_mode="HTML")
 
+    elif data == "admin_software_links":
+        links = get_software_links()
+        await callback.message.answer(
+            "📱 مدیریت لینک نرم‌افزارها",
+            reply_markup=get_admin_software_links_keyboard(links),
+            parse_mode="HTML",
+        )
+
+    elif data in {"admin_software_ios", "admin_software_android", "admin_software_windows"}:
+        platform_map = {
+            "admin_software_ios": ("ios", "iPhone"),
+            "admin_software_android": ("android", "Android"),
+            "admin_software_windows": ("windows", "Windows"),
+        }
+        platform_key, platform_label = platform_map[data]
+        admin_software_links_state[user_id] = {"platform": platform_key}
+        await callback.message.answer(f"لینک جدید {platform_label} را وارد کنید:", parse_mode="HTML")
+
     elif data in {"admin_card_ro", "admin_card_edit"}:
         admin_card_state[user_id] = {"step": "card_number"}
         await callback.message.answer("مقدار جدید شماره کارت را وارد کنید:", parse_mode="HTML")
@@ -189,11 +207,6 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
     elif data.startswith("admin_user_") and not data.startswith((
         "admin_user_configs_",
         "admin_user_block_toggle_",
-        "admin_user_org_toggle_",
-        "admin_user_org_total_traffic_",
-        "admin_user_org_price_",
-        "admin_user_org_price_edit_",
-        "admin_user_org_negative_limit_edit_",
         "admin_user_wallet_actions_",
         "admin_user_finance_",
     )):
@@ -226,26 +239,6 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
         finally:
             db.close()
 
-    elif data.startswith("admin_user_org_toggle_"):
-        target_user_id = int(data.replace("admin_user_org_toggle_", ""))
-        db = SessionLocal()
-        try:
-            user_obj = db.query(User).filter(User.id == target_user_id).first()
-            if not user_obj:
-                await callback.message.answer("❌ کاربر یافت نشد.", parse_mode="HTML")
-                return
-            user_obj.is_organization_customer = not bool(user_obj.is_organization_customer)
-            if user_obj.org_price_per_gb is None:
-                user_obj.org_price_per_gb = 3000
-            db.commit()
-            state_text = "مشتری سازمانی" if user_obj.is_organization_customer else "مشتری عادی"
-            await callback.message.answer(f"✅ نوع مشتری با موفقیت به «{state_text}» تغییر کرد.", parse_mode="HTML")
-            msg, keyboard = get_admin_user_manage_view(db, user_obj)
-            await callback.message.answer(msg, reply_markup=keyboard, parse_mode="HTML")
-        finally:
-            db.close()
-
-
     elif data.startswith("admin_user_wallet_actions_"):
         target_user_id = int(data.replace("admin_user_wallet_actions_", ""))
         db = SessionLocal()
@@ -260,61 +253,9 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
             db.close()
 
     elif data.startswith("admin_user_finance_"):
-        target_user_id = int(data.replace("admin_user_finance_", ""))
-        db = SessionLocal()
-        try:
-            user_obj = db.query(User).filter(User.id == target_user_id).first()
-            if not user_obj:
-                await callback.message.answer("❌ کاربر یافت نشد.", parse_mode="HTML")
-                return
-            msg, keyboard = get_admin_user_manage_view(db, user_obj, show_finance_panel=True)
-            await callback.message.answer(msg, reply_markup=keyboard, parse_mode="HTML")
-        finally:
-            db.close()
-    elif data.startswith("admin_user_org_total_traffic_"):
-        target_user_id = int(data.replace("admin_user_org_total_traffic_", ""))
-        db = SessionLocal()
-        try:
-            user_obj = db.query(User).filter(User.id == target_user_id).first()
-            if not user_obj or not user_obj.is_organization_customer:
-                await callback.answer("این کاربر مشتری سازمانی نیست.", show_alert=True)
-                return
-            financials = calculate_org_user_financials(db, user_obj)
-            await callback.answer(f"مجموع ترافیک فعال: {financials['total_traffic_gb']:.2f} GB", show_alert=True)
-        finally:
-            db.close()
-
-    elif data.startswith("admin_user_org_price_edit_"):
-        target_user_id = int(data.replace("admin_user_org_price_edit_", ""))
-        db = SessionLocal()
-        try:
-            user_obj = db.query(User).filter(User.id == target_user_id).first()
-            if not user_obj or not user_obj.is_organization_customer:
-                await callback.answer("این کاربر مشتری سازمانی نیست.", show_alert=True)
-                return
-            admin_plan_state[user_id] = {"action": "edit_org_price", "target_user_id": target_user_id}
-            await callback.message.answer(
-                f"مقدار جدید هزینه هر گیگ را وارد کنید.\n\nمقدار فعلی: {(user_obj.org_price_per_gb or 0):,} تومان",
-                parse_mode="HTML",
-            )
-        finally:
-            db.close()
-
-    elif data.startswith("admin_user_org_negative_limit_edit_"):
-        target_user_id = int(data.replace("admin_user_org_negative_limit_edit_", ""))
-        db = SessionLocal()
-        try:
-            user_obj = db.query(User).filter(User.id == target_user_id).first()
-            if not user_obj or not user_obj.is_organization_customer:
-                await callback.answer("این کاربر مشتری سازمانی نیست.", show_alert=True)
-                return
-            admin_plan_state[user_id] = {"action": "edit_org_negative_limit", "target_user_id": target_user_id}
-            await callback.message.answer(
-                f"حد مجاز منفی شدن کیف پول را وارد کنید (تومان).\n\nمقدار فعلی: {(user_obj.org_wallet_negative_limit or 0):,} تومان",
-                parse_mode="HTML",
-            )
-        finally:
-            db.close()
+        await callback.answer("بخش مشتری سازمانی غیرفعال شده است.", show_alert=True)
+    elif data.startswith(("admin_user_org_total_traffic_", "admin_user_org_price_edit_", "admin_user_org_negative_limit_edit_", "admin_user_org_toggle_")):
+        await callback.answer("بخش مشتری سازمانی غیرفعال شده است.", show_alert=True)
 
     elif data.startswith("admin_user_configs_"):
 
@@ -351,13 +292,14 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
 
             plan = db.query(Plan).filter(Plan.id == config.plan_id).first() if config.plan_id else None
             plan_traffic_bytes, remaining_bytes = get_config_remaining_bytes(config, plan)
-            consumed_bytes = get_config_consumed_bytes(config)
+            supports_traffic = supports_traffic_tracking(config)
+            consumed_bytes = get_config_consumed_bytes(config) if supports_traffic else 0
             expires_at = get_config_expires_at(config, plan)
             duration_days, traffic_limit_gb = get_config_limits(config, plan)
 
             now = datetime.utcnow()
             is_expired_by_date = bool(expires_at and expires_at <= now)
-            is_expired_by_traffic = bool(plan_traffic_bytes and remaining_bytes <= 0)
+            is_expired_by_traffic = bool(supports_traffic and plan_traffic_bytes and remaining_bytes <= 0)
             is_disabled = config.status in ["expired", "revoked", "disabled"]
             can_renew = bool(is_expired_by_date or is_expired_by_traffic or is_disabled)
 
@@ -379,8 +321,8 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
                     can_renew=can_renew,
                     duration_days_text=(str(duration_days) if duration_days is not None else "نامشخص"),
                     traffic_text=(f"{traffic_limit_gb} گیگ" if traffic_limit_gb is not None else "نامشخص"),
-                    consumed_text=format_traffic_size(consumed_bytes),
-                    remaining_text=(format_traffic_size(remaining_bytes) if plan_traffic_bytes else "نامحدود/نامشخص"),
+                    consumed_text=(format_traffic_size(consumed_bytes) if supports_traffic else "نامشخص در حالت SSH"),
+                    remaining_text=(format_traffic_size(remaining_bytes) if supports_traffic and plan_traffic_bytes else "نامشخص در حالت SSH"),
                     status_text=status_text,
                 ),
                 parse_mode="HTML"
@@ -802,6 +744,22 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
         admin_service_type_state[user_id] = {"step": "name"}
         await callback.message.answer("نام نوع سرویس جدید را وارد کنید:", parse_mode="HTML")
 
+    elif data.startswith("service_type_edit_"):
+        st_id = int(data.split("_")[-1])
+        db = SessionLocal()
+        try:
+            st = db.query(ServiceType).filter(ServiceType.id == st_id).first()
+            if not st:
+                await callback.message.answer("❌ نوع سرویس یافت نشد.", parse_mode="HTML")
+                return
+            admin_service_type_state[user_id] = {"step": "edit_name", "service_type_id": st.id}
+            await callback.message.answer(
+                f"نام جدید نوع سرویس را وارد کنید.\n\nنام فعلی: <code>{st.name}</code>",
+                parse_mode="HTML",
+            )
+        finally:
+            db.close()
+
     elif data.startswith("service_type_view_"):
         st_id = int(data.split("_")[-1])
         db = SessionLocal()
@@ -813,7 +771,10 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             await callback.message.answer(
                 f"🧩 {st.name} ({st.code})",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🗑️ حذف", callback_data=f"service_type_delete_{st.id}")]]),
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="✏️ ویرایش", callback_data=f"service_type_edit_{st.id}")],
+                    [InlineKeyboardButton(text="🗑️ حذف", callback_data=f"service_type_delete_{st.id}")],
+                ]),
                 parse_mode="HTML",
             )
         finally:
@@ -1000,58 +961,7 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
                     return True
 
                 if receipt.payment_method == "org_settlement":
-                    target_user = get_user(db, receipt.user_telegram_id)
-                    if not target_user or not target_user.is_organization_customer:
-                        await callback.message.answer("❌ کاربر سازمانی یافت نشد.", parse_mode="HTML")
-                        return True
-                    active_configs = db.query(WireGuardConfig).filter(
-                        WireGuardConfig.user_telegram_id == target_user.telegram_id,
-                        WireGuardConfig.status == "active",
-                    ).all()
-                    reset_count = 0
-                    for cfg in active_configs:
-                        server = db.query(Server).filter(Server.id == cfg.server_id, Server.is_active == True).first() if cfg.server_id else None
-                        if server:
-                            try:
-                                import wireguard
-                                if wireguard.reset_wireguard_peer_traffic(
-                                    mikrotik_host=server.host,
-                                    mikrotik_user=server.username,
-                                    mikrotik_pass=server.password,
-                                    mikrotik_port=server.api_port,
-                                    wg_interface=server.wg_interface,
-                                    client_ip=cfg.client_ip,
-                                ):
-                                    reset_count += 1
-                            except Exception as e:
-                                print(f"Org settlement approve reset error ({cfg.client_ip}): {e}")
-                        cfg.cumulative_rx_bytes = 0
-                        cfg.cumulative_tx_bytes = 0
-                        cfg.last_rx_counter = 0
-                        cfg.last_tx_counter = 0
-                        cfg.counter_reset_flag = True
-                    target_user.org_deleted_traffic_bytes = 0
-                    target_user.org_last_billed_usage_bytes = 0
-                    target_user.org_last_settlement_at = datetime.utcnow()
-                    db.commit()
-
-                    await callback.message.answer(
-                        f"✅ تسویه سازمانی تایید شد.\n• کاربر: {receipt.user_telegram_id}\n• تعداد ریست روتر: {reset_count}",
-                        reply_markup=get_receipt_done_keyboard(),
-                        parse_mode="HTML"
-                    )
-                    try:
-                        await callback.message.bot.send_message(
-                            chat_id=int(receipt.user_telegram_id),
-                            text="✅ بدهی شما تسویه شد و ترافیک مصرفی همه لینک‌های شما صفر شد.",
-                            parse_mode="HTML",
-                        )
-                    except Exception as e:
-                        print(f"Error notifying org settlement approval: {e}")
-                    try:
-                        await callback.message.edit_reply_markup(reply_markup=get_receipt_done_keyboard("✅ تایید شد"))
-                    except Exception:
-                        pass
+                    await callback.message.answer("⚠️ بخش مشتری سازمانی غیرفعال شده است.", parse_mode="HTML")
                     return True
 
                 if receipt.renew_config_id:

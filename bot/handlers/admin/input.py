@@ -26,6 +26,23 @@ async def handle_admin_input(message: Message):
             await message.answer("💳 مدیریت اطلاعات کارت", reply_markup=get_admin_card_keyboard(old_number, holder_name), parse_mode="HTML")
             return
 
+    if user_id in admin_software_links_state:
+        state = admin_software_links_state[user_id]
+        platform = state.get("platform")
+        url = text.strip()
+        if not url.startswith(("http://", "https://")):
+            await message.answer("❌ لینک باید با http:// یا https:// شروع شود.", parse_mode="HTML")
+            return
+        links = set_software_link(platform, url)
+        admin_software_links_state.pop(user_id, None)
+        await message.answer("✅ لینک نرم‌افزار به‌روزرسانی شد.", parse_mode="HTML")
+        await message.answer(
+            "📱 مدیریت لینک نرم‌افزارها",
+            reply_markup=get_admin_software_links_keyboard(links),
+            parse_mode="HTML",
+        )
+        return
+
     # Handle wallet adjust flow
     if user_id in admin_wallet_adjust_state:
         state = admin_wallet_adjust_state[user_id]
@@ -165,7 +182,7 @@ async def handle_admin_input(message: Message):
     # Handle service type create flow
     if user_id in admin_service_type_state:
         state = admin_service_type_state[user_id]
-        if state.get("step") == "name":
+        if state.get("step") in {"name", "edit_name"}:
             name = text.strip()
             if not name:
                 await message.answer("❌ نام نوع سرویس نامعتبر است.", parse_mode="HTML")
@@ -174,6 +191,20 @@ async def handle_admin_input(message: Message):
             db = SessionLocal()
             try:
                 exists = db.query(ServiceType).filter(ServiceType.code == code).first()
+                if state.get("step") == "edit_name":
+                    row = db.query(ServiceType).filter(ServiceType.id == state.get("service_type_id")).first()
+                    if not row:
+                        await message.answer("❌ نوع سرویس یافت نشد.", parse_mode="HTML")
+                        return
+                    if exists and exists.id != row.id:
+                        await message.answer("❌ این نوع سرویس قبلاً ثبت شده است.", parse_mode="HTML")
+                        return
+                    row.name = name
+                    row.code = code
+                    db.commit()
+                    await message.answer(f"✅ نوع سرویس به {name} ویرایش شد.", parse_mode="HTML")
+                    await message.answer("🧩 مدیریت انواع سرویس", reply_markup=get_service_types_keyboard(db.query(ServiceType).all()), parse_mode="HTML")
+                    return
                 if exists:
                     await message.answer("❌ این نوع سرویس قبلاً ثبت شده است.", parse_mode="HTML")
                     return
@@ -463,51 +494,14 @@ async def handle_admin_input(message: Message):
 
 
     if user_id in admin_plan_state and admin_plan_state[user_id].get("action") == "edit_org_price":
-        state = admin_plan_state[user_id]
-        target_user_id = state.get("target_user_id")
-        value_text = normalize_numbers(text).replace(",", "").strip()
-        if not value_text.isdigit() or int(value_text) <= 0:
-            await message.answer("❌ لطفاً مبلغ معتبر وارد کنید.", parse_mode="HTML")
-            return
-        db = SessionLocal()
-        try:
-            user_obj = db.query(User).filter(User.id == target_user_id).first()
-            if not user_obj or not user_obj.is_organization_customer:
-                await message.answer("❌ کاربر سازمانی یافت نشد.", parse_mode="HTML")
-                return
-            user_obj.org_price_per_gb = int(value_text)
-            db.commit()
-            await message.answer("✅ هزینه هر گیگ بروزرسانی شد.", parse_mode="HTML")
-            msg, keyboard = get_admin_user_manage_view(db, user_obj, show_finance_panel=True)
-            await message.answer(msg, reply_markup=keyboard, parse_mode="HTML")
-        finally:
-            db.close()
-            admin_plan_state.pop(user_id, None)
+        admin_plan_state.pop(user_id, None)
+        await message.answer("بخش مشتری سازمانی غیرفعال شده است.", parse_mode="HTML")
         return
 
 
     if user_id in admin_plan_state and admin_plan_state[user_id].get("action") == "edit_org_negative_limit":
-        state = admin_plan_state[user_id]
-        target_user_id = state.get("target_user_id")
-        value_text = normalize_numbers(text).replace(",", "").strip()
-        if not value_text.isdigit() or int(value_text) < 0:
-            await message.answer("❌ لطفاً مبلغ معتبر وارد کنید.", parse_mode="HTML")
-            return
-        db = SessionLocal()
-        try:
-            user_obj = db.query(User).filter(User.id == target_user_id).first()
-            if not user_obj or not user_obj.is_organization_customer:
-                await message.answer("❌ کاربر سازمانی یافت نشد.", parse_mode="HTML")
-                return
-            user_obj.org_wallet_negative_limit = int(value_text)
-            user_obj.org_negative_alert_sent = False
-            db.commit()
-            await message.answer("✅ حد مجاز منفی شدن کیف پول بروزرسانی شد.", parse_mode="HTML")
-            msg, keyboard = get_admin_user_manage_view(db, user_obj, show_finance_panel=True)
-            await message.answer(msg, reply_markup=keyboard, parse_mode="HTML")
-        finally:
-            db.close()
-            admin_plan_state.pop(user_id, None)
+        admin_plan_state.pop(user_id, None)
+        await message.answer("بخش مشتری سازمانی غیرفعال شده است.", parse_mode="HTML")
         return
 
     if user_id in admin_plan_state and admin_plan_state[user_id].get("action") == "edit_config":

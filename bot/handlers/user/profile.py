@@ -5,27 +5,7 @@ async def handle_user_profile_callbacks(callback: CallbackQuery, bot, data: str,
         await callback.answer("این بخش فقط خواندنی است.", show_alert=False)
 
     elif data == "profile_finance":
-        db = SessionLocal()
-        try:
-            user = get_user(db, str(user_id))
-            if not user or not user.is_organization_customer:
-                await callback.answer("اطلاعات مالی برای این حساب فعال نیست.", show_alert=True)
-                return
-            financials = calculate_org_user_financials(db, user)
-            await callback.message.answer(
-                "💼 موارد مالی مشتری سازمانی:",
-                reply_markup=get_org_finance_keyboard(
-                    user_id=0,
-                    total_traffic_text=f"{financials['total_traffic_gb']:.2f} GB",
-                    price_per_gb_text=f"{financials['price_per_gb']:,} تومان",
-                    wallet_balance_text=f"{financials['debt_amount']:,} تومان",
-                    can_edit_price=False,
-                    back_callback="profile",
-                ),
-                parse_mode="HTML",
-            )
-        finally:
-            db.close()
+        await callback.answer("بخش مشتری سازمانی غیرفعال شده است.", show_alert=True)
 
     elif data.startswith("cfg_renew_unavailable_"):
         data = data.replace("cfg_renew_unavailable_", "cfg_renew_")
@@ -118,7 +98,7 @@ async def handle_user_profile_callbacks(callback: CallbackQuery, bot, data: str,
                         active_configs=active_configs,
                         joined_date=joined_date,
                         member_status=member_status,
-                        is_org_customer=bool(user.is_organization_customer),
+                        is_org_customer=False,
                     ),
                     parse_mode="HTML",
                 )

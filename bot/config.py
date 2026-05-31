@@ -52,4 +52,5 @@ admin_tutorial_state = {}  # For tutorial creation flow
 admin_representative_state = {}  # For representative management flow
 
 admin_card_state = {}  # For admin card-number edit flow
+admin_software_links_state = {}  # For admin software-links edit flow
 org_user_state = {}  # For organization-user create-account/settlement flow

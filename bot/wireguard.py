@@ -378,8 +378,9 @@ def disable_expired_or_exhausted_configs(mikrotik_host: str, mikrotik_user: str,
             duration_days = config.duration_days if config.duration_days is not None else (plan.duration_days if plan else None)
             traffic_limit_gb = config.traffic_limit_gb if config.traffic_limit_gb is not None else (plan.traffic_gb if plan else None)
             expires_at = config.expires_at or (config.created_at + timedelta(days=(duration_days or 0)))
-            consumed_bytes = (config.cumulative_rx_bytes or 0) + (config.cumulative_tx_bytes or 0)
-            traffic_limit_bytes = int((traffic_limit_gb or 0) * (1024 ** 3)) if traffic_limit_gb else 0
+            supports_traffic = not str(config.public_key or "").startswith("npvt-ssh://")
+            consumed_bytes = ((config.cumulative_rx_bytes or 0) + (config.cumulative_tx_bytes or 0)) if supports_traffic else 0
+            traffic_limit_bytes = int((traffic_limit_gb or 0) * (1024 ** 3)) if (traffic_limit_gb and supports_traffic) else 0
 
             if (expires_at and expires_at <= now) or (traffic_limit_bytes and consumed_bytes >= traffic_limit_bytes):
                 if server:

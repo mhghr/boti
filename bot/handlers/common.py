@@ -16,7 +16,7 @@ from config import (
     admin_plan_state, admin_create_account_state, user_payment_state,
     admin_user_search_state, admin_wallet_adjust_state, admin_discount_state, admin_receipt_reject_state,
     admin_service_type_state, admin_server_state, admin_tutorial_state, admin_representative_state,
-    admin_card_state,
+    admin_card_state, admin_software_links_state,
     org_user_state,
     AGENT_BOT_DOCKER_IMAGE, AGENT_BOT_CONTAINER_PREFIX, AGENT_BOT_DOCKER_NETWORK
 )
@@ -34,7 +34,8 @@ from keyboards import (
     get_service_type_picker_keyboard, get_plan_servers_picker_keyboard, get_plan_created_actions_keyboard, get_plan_server_select_keyboard,
     get_representatives_keyboard, get_representative_action_keyboard,
     get_profile_keyboard, get_org_finance_keyboard,
-    get_wallet_keyboard, get_admin_card_keyboard
+    get_wallet_keyboard, get_admin_card_keyboard, get_admin_software_links_keyboard,
+    get_software_links_keyboard
 )
 
 from texts import (
@@ -56,6 +57,7 @@ from services.plan_service import (
     build_wg_kwargs,
 )
 from services.card_service import get_card_info, set_card_info
+from services.software_links_service import get_software_links, set_software_link
 from services.server_service import evaluate_server_parameters
 
 dp = Dispatcher()
@@ -170,11 +172,21 @@ def get_config_expires_at(config: WireGuardConfig, plan: Plan | None):
     return expires_at
 
 
+def is_ssh_account_config(config: WireGuardConfig) -> bool:
+    return bool(str(config.public_key or "").startswith("npvt-ssh://"))
+
+
+def supports_traffic_tracking(config: WireGuardConfig) -> bool:
+    return not is_ssh_account_config(config)
+
+
 def get_config_consumed_bytes(config: WireGuardConfig) -> int:
     return int((config.cumulative_rx_bytes or 0) + (config.cumulative_tx_bytes or 0))
 
 
 def get_config_remaining_bytes(config: WireGuardConfig, plan: Plan | None) -> tuple[int, int]:
+    if not supports_traffic_tracking(config):
+        return 0, 0
     _, traffic_limit_gb = get_config_limits(config, plan)
     limit_bytes = int((traffic_limit_gb or 0) * (1024 ** 3)) if traffic_limit_gb else 0
     consumed = get_config_consumed_bytes(config)
@@ -188,32 +200,25 @@ def can_renew_config_now(config: WireGuardConfig, plan: Plan | None) -> bool:
 
     now = datetime.utcnow()
     plan_traffic_bytes, _ = get_config_remaining_bytes(config, plan)
-    consumed_bytes = get_config_consumed_bytes(config)
+    consumed_bytes = get_config_consumed_bytes(config) if supports_traffic_tracking(config) else 0
     expires_at = get_config_expires_at(config, plan)
 
     is_expired_by_date = bool(expires_at and expires_at <= now)
     is_expired_by_traffic = bool(plan_traffic_bytes and consumed_bytes >= plan_traffic_bytes)
     is_disabled = config.status in ["expired", "revoked", "disabled"]
-    is_notified = bool(
+    is_notified = bool(config.expiry_alert_sent if not supports_traffic_tracking(config) else (
         config.low_traffic_alert_sent
         or config.expiry_alert_sent
         or config.threshold_alert_sent
-    )
+    ))
     return bool(is_expired_by_date or is_expired_by_traffic or is_disabled or is_notified)
 
-
-
-def calculate_org_user_financials(db, user_obj: User):
-    data = _calculate_org_user_financials(db, user_obj)
-    data["last_settlement"] = format_jalali_date(user_obj.org_last_settlement_at) if user_obj.org_last_settlement_at else "ثبت نشده"
-    return data
 
 
 def build_admin_user_info_message(db, user_obj: User) -> str:
     username = f"@{user_obj.username}" if user_obj.username else "ندارد"
     joined_date = format_jalali_date(user_obj.joined_at) if user_obj.joined_at else "نامشخص"
     all_configs_count = db.query(WireGuardConfig).filter(WireGuardConfig.user_telegram_id == user_obj.telegram_id).count()
-    enterprise_status = "✅ مشتری سازمانی" if user_obj.is_organization_customer else "❌ مشتری عادی"
     blocked_status = "⛔ مسدود" if user_obj.is_blocked else "✅ فعال"
     msg = (
         f"👤 اطلاعات کاربر:\n\n"
@@ -225,18 +230,8 @@ def build_admin_user_info_message(db, user_obj: User) -> str:
         f"وضعیت عضویت: {'✅ فعال' if user_obj.is_member else '❌ غیرفعال'}\n"
         f"ادمین: {'✅ بله' if user_obj.is_admin else '❌ خیر'}\n"
         f"وضعیت دسترسی: {blocked_status}\n"
-        f"نوع مشتری: {enterprise_status}\n"
         f"تعداد لینک/کانفیگ‌ها: {all_configs_count}"
     )
-    if user_obj.is_organization_customer:
-        fz = calculate_org_user_financials(db, user_obj)
-        msg += (
-            f"\n\n🏢 اطلاعات مالی مشتری سازمانی:\n"
-            f"• مجموع ترافیک قابل‌فاکتور (فعال + حذف‌شده): {fz['total_traffic_gb']:.2f} GB\n"
-            f"• هزینه هر گیگ: {fz['price_per_gb']:,} تومان\n"
-            f"• مبلغ بدهکاری: {fz['debt_amount']:,} تومان\n"
-            f"• زمان آخرین تسویه: {fz['last_settlement']}"
-        )
     return msg
 
 
@@ -244,8 +239,6 @@ def get_admin_user_manage_view(db, user_obj: User, show_wallet_actions: bool = F
     username = f"@{user_obj.username}" if user_obj.username else "ندارد"
     joined_date = format_jalali_date(user_obj.joined_at) if user_obj.joined_at else "نامشخص"
     all_configs_count = db.query(WireGuardConfig).filter(WireGuardConfig.user_telegram_id == user_obj.telegram_id).count()
-    financials = calculate_org_user_financials(db, user_obj) if user_obj.is_organization_customer else None
-
     return (
         "👤 مدیریت کاربر",
         get_admin_user_manage_keyboard(
@@ -258,15 +251,9 @@ def get_admin_user_manage_view(db, user_obj: User, show_wallet_actions: bool = F
             is_member=bool(user_obj.is_member),
             is_admin=bool(user_obj.is_admin),
             config_count=all_configs_count,
-            is_org=bool(user_obj.is_organization_customer),
             is_blocked=bool(user_obj.is_blocked),
             show_wallet_actions=show_wallet_actions,
             show_finance_panel=show_finance_panel,
-            total_traffic_text=(f"{financials['total_traffic_gb']:.2f} GB" if financials else "-"),
-            price_per_gb_text=(f"{financials['price_per_gb']:,} تومان" if financials else "-"),
-            debt_text=(f"{financials['debt_amount']:,} تومان" if financials else "-"),
-            last_settlement_text=(financials['last_settlement'] if financials else "-"),
-            negative_limit_text=(f"{(user_obj.org_wallet_negative_limit or 0):,} تومان" if financials else "0 تومان"),
         ),
     )
 

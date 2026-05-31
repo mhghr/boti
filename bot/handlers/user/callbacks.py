@@ -91,17 +91,11 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
             db.close()
 
     elif data == "software":
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        links = get_software_links()
         await callback.message.answer(
             "📱 نرم‌افزارهای مورد نیاز\n\n"
-            "برای اتصال به وی‌پی‌ان از کانفیگ WireGuard استفاده کنید.\n"
-            "نرم‌افزار مناسب سیستم‌عامل خود را دانلود کنید:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🍎 آیفون (iOS)", url="https://apps.apple.com/us/app/wireguard/id1441195209")],
-                [InlineKeyboardButton(text="📱 اندروید", url="https://play.google.com/store/apps/details?id=com.wireguard.android&hl=en")],
-                [InlineKeyboardButton(text="💻 ویندوز/مک/لینوکس", url="https://www.wireguard.com/install/")],
-                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_main")]
-            ]),
+            "برای اتصال به وی‌پی‌ان از لینک‌های زیر نرم‌افزار مناسب دستگاه خود را دانلود کنید:",
+            reply_markup=get_software_links_keyboard(links),
             parse_mode="HTML"
         )
 
@@ -111,18 +105,10 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
             configs = db.query(WireGuardConfig).filter(
                 WireGuardConfig.user_telegram_id == str(user_id)
             ).order_by(WireGuardConfig.created_at.desc()).all()
-            user_obj = get_user(db, str(user_id))
-            is_org_customer = bool(user_obj and user_obj.is_organization_customer)
             if configs:
                 await callback.message.answer(
                     "🔗 کانفیگ های من\n\nبرای مشاهده جزئیات، کانفیگ موردنظر را انتخاب کنید:",
-                    reply_markup=get_configs_keyboard(configs, is_org_customer=is_org_customer),
-                    parse_mode="HTML"
-                )
-            elif is_org_customer:
-                await callback.message.answer(
-                    "🔗 هنوز کانفیگی ندارید. می‌توانید از دکمه‌های زیر استفاده کنید:",
-                    reply_markup=get_configs_keyboard([], is_org_customer=True),
+                    reply_markup=get_configs_keyboard(configs),
                     parse_mode="HTML"
                 )
             else:
@@ -130,79 +116,8 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
         finally:
             db.close()
 
-    elif data == "org_create_account":
-        db = SessionLocal()
-        try:
-            user_obj = get_user(db, str(user_id))
-            if not user_obj or not user_obj.is_organization_customer:
-                await callback.answer("این گزینه فقط برای مشتری سازمانی فعال است.", show_alert=True)
-                return
-            org_user_state[user_id] = {"step": "name"}
-            await callback.message.answer("ابتدا یک نام برای اکانت وارد کنید:", parse_mode="HTML")
-        finally:
-            db.close()
-
-    elif data == "org_finance":
-        db = SessionLocal()
-        try:
-            user_obj = get_user(db, str(user_id))
-            if not user_obj or not user_obj.is_organization_customer:
-                await callback.answer("اطلاعات مالی برای این حساب فعال نیست.", show_alert=True)
-                return
-            financials = calculate_org_user_financials(db, user_obj)
-            await callback.message.answer(
-                "💼 مالی مشتری سازمانی:",
-                reply_markup=get_org_finance_keyboard(
-                    user_id=0,
-                    total_traffic_text=f"{financials['total_traffic_gb']:.2f} GB",
-                    price_per_gb_text=f"{financials['price_per_gb']:,} تومان",
-                    wallet_balance_text=f"{financials['debt_amount']:,} تومان",
-                    can_edit_price=False,
-                    back_callback="configs",
-                ),
-                parse_mode="HTML",
-            )
-        finally:
-            db.close()
-
-    elif data == "org_finance_settlement":
-        db = SessionLocal()
-        try:
-            user_obj = get_user(db, str(user_id))
-            if not user_obj or not user_obj.is_organization_customer:
-                await callback.answer("این گزینه فقط برای مشتری سازمانی فعال است.", show_alert=True)
-                return
-
-            financials = calculate_org_user_financials(db, user_obj)
-            debt_amount = int(financials["debt_amount"] or 0)
-            if debt_amount <= 0:
-                await callback.answer("در حال حاضر بدهی قابل تسویه‌ای ندارید.", show_alert=True)
-                return
-
-            card_number, card_holder = get_card_info()
-            card_text = card_number if card_number else "هنوز شماره کارتی داده نشده"
-            holder_text = card_holder if card_holder else "نام صاحب حساب"
-
-            org_user_state[user_id] = {
-                "step": "settlement_receipt",
-                "amount": debt_amount,
-            }
-
-            await callback.message.answer(
-                (
-                    "💳 تسویه مالی مشتری سازمانی\n\n"
-                    f"مبلغ <b>{debt_amount:,} تومان</b> را به شماره کارت زیر واریز کنید "
-                    "و تصویر فیش واریزی را در همین مرحله آپلود نمایید.\n\n"
-                    f"<code>{card_text}</code>\n"
-                    f"{holder_text}"
-                ),
-                parse_mode="HTML",
-            )
-        finally:
-            db.close()
-
-    elif data == "org_finance_ro":
-        await callback.answer("این بخش فقط جهت نمایش است.", show_alert=False)
+    elif data in {"org_create_account", "org_finance", "org_finance_settlement", "org_finance_ro"}:
+        await callback.answer("بخش مشتری سازمانی غیرفعال شده است.", show_alert=True)
 
     elif data.startswith("cfg_view_"):
         config_id = data.replace("cfg_view_", "")
@@ -225,7 +140,8 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
 
             plan = db.query(Plan).filter(Plan.id == config.plan_id).first() if config.plan_id else None
             plan_traffic_bytes, remaining_bytes = get_config_remaining_bytes(config, plan)
-            consumed_bytes = get_config_consumed_bytes(config)
+            supports_traffic = supports_traffic_tracking(config)
+            consumed_bytes = get_config_consumed_bytes(config) if supports_traffic else 0
             expires_at = get_config_expires_at(config, plan)
 
             can_renew = can_renew_config_now(config, plan)
@@ -240,8 +156,8 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
                         "name": config_name,
                         "ip": config.client_ip,
                         "server": server.name if server else "-",
-                        "consumed": format_traffic_size(consumed_bytes),
-                        "remaining": format_traffic_size(remaining_bytes) if plan_traffic_bytes else "نامحدود/نامشخص",
+                        "consumed": (format_traffic_size(consumed_bytes) if supports_traffic else "نامشخص در حالت SSH"),
+                        "remaining": (format_traffic_size(remaining_bytes) if supports_traffic and plan_traffic_bytes else "نامشخص در حالت SSH"),
                         "expires_at": format_jalali_date(expires_at),
                         "status": "🔴 غیرفعال" if config.status != "active" else "🟢 فعال",
                     },
@@ -337,18 +253,7 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
             if str(user_id) != config.user_telegram_id and not is_admin(user_id):
                 await callback.answer("شما دسترسی ندارید.", show_alert=True)
                 return
-            owner_user = db.query(User).filter(User.telegram_id == config.user_telegram_id).first()
-            if not owner_user or not owner_user.is_organization_customer:
-                await callback.answer("این کانفیگ اطلاعات مالی سازمانی ندارد.", show_alert=True)
-                return
-            financials = calculate_org_user_financials(db, owner_user)
-            finance_text = (
-                f"📊 مجموع ترافیک قابل‌فاکتور (فعال + حذف‌شده): {financials['total_traffic_gb']:.2f} GB\n"
-                f"💰 هزینه هر گیگ: {financials['price_per_gb']:,} تومان\n"
-                f"🧾 مبلغ بدهکاری: {financials['debt_amount']:,} تومان\n"
-                f"🕓 زمان آخرین تسویه: {financials['last_settlement']}"
-            )
-            await callback.answer(finance_text, show_alert=True)
+            await callback.answer("بخش مشتری سازمانی غیرفعال شده است.", show_alert=True)
         finally:
             db.close()
 

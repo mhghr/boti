@@ -89,13 +89,10 @@ async def handle_user_menu_buttons(message: Message):
         return
 
     if text == "📱 نرم‌افزارها":
+        links = get_software_links()
         await message.answer(
-            "📱 نرم‌افزارهای مورد نیاز\n\nبرای اتصال به وی‌پی‌ان از کانفیگ WireGuard استفاده کنید.\nنرم‌افزار مناسب سیستم‌عامل خود را دانلود کنید:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🍎 آیفون (iOS)", url="https://apps.apple.com/us/app/wireguard/id1441195209")],
-                [InlineKeyboardButton(text="📱 اندروید", url="https://play.google.com/store/apps/details?id=com.wireguard.android&hl=en")],
-                [InlineKeyboardButton(text="💻 ویندوز/مک/لینوکس", url="https://www.wireguard.com/install/")],
-            ]),
+            "📱 نرم‌افزارهای مورد نیاز\n\nبرای اتصال به وی‌پی‌ان از لینک‌های زیر نرم‌افزار مناسب دستگاه خود را دانلود کنید:",
+            reply_markup=get_software_links_keyboard(links, include_back=False),
             parse_mode="HTML"
         )
         return
