@@ -830,33 +830,15 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
                     if location not in seen_locations:
                         seen_locations.add(location)
                         locations.append(location)
-                if len(locations) > 1:
-                    await callback.message.answer(
-                        "ابتدا لوکیشن را انتخاب کنید:",
-                        reply_markup=get_plan_location_picker_keyboard(plan.id, locations),
-                        parse_mode="HTML",
-                    )
-                    return
-                if len(available_servers) > 1:
-                    await callback.message.answer(
-                        "ابتدا سرور را انتخاب کنید:",
-                        reply_markup=get_plan_server_select_keyboard(available_servers, f"buy_pick_server_{plan.id}_"),
-                        parse_mode="HTML",
-                    )
-                    return
-                user_payment_state[user_id]["server_id"] = available_servers[0].id
+                await callback.message.answer(
+                    "ابتدا لوکیشن را انتخاب کنید:",
+                    reply_markup=get_plan_location_picker_keyboard(plan.id, locations),
+                    parse_mode="HTML",
+                )
+                return
             else:
                 await callback.message.answer("❌ ظرفیت سرورهای این پلن تکمیل است.", parse_mode="HTML")
                 return
-
-            msg = (
-                f'💳 پرداخت پلن "{plan.name}"\n\n'
-                f"• حجم: {plan.traffic_gb} گیگ\n"
-                f"• مدت: {plan.duration_days} روز\n"
-                f"• قیمت: {plan.price} تومان\n\n"
-                "روش پرداخت را انتخاب کنید:"
-            )
-            await callback.message.answer(msg, reply_markup=get_payment_method_keyboard(plan_id), parse_mode="HTML")
         finally:
             db.close()
 
