@@ -1158,25 +1158,6 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
                             user_tg_id = int(receipt.user_telegram_id)
                             config = wg_result.get("config", "")
 
-                            # Send config as file
-                            if config:
-                                import tempfile
-                                import os
-                                tmp_path = None
-                                try:
-                                    with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False, encoding="utf-8") as tmp:
-                                        tmp.write(config)
-                                        tmp_path = tmp.name
-
-                                    await callback.message.bot.send_document(
-                                        chat_id=user_tg_id,
-                                        document=FSInputFile(tmp_path, filename="npvt-ssh.txt"),
-                                        caption="📄 فایل اتصال"
-                                    )
-                                finally:
-                                    if tmp_path and os.path.exists(tmp_path):
-                                        os.remove(tmp_path)
-
                             # Send QR code if available
                             if wg_result.get("qr_code"):
                                 try:
@@ -1193,6 +1174,13 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
                                     )
                                 except Exception as e:
                                     print(f"Error sending QR code to user: {e}")
+                            if config:
+                                await send_wireguard_config_file(
+                                    callback.message.bot,
+                                    config,
+                                    caption="Link",
+                                    chat_id=user_tg_id,
+                                )
                         except Exception as e:
                             print(f"Error sending to user: {e}")
                     else:
