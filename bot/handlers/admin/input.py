@@ -480,22 +480,6 @@ async def handle_admin_input(message: Message):
                     if not servers:
                         await message.answer("❌ هیچ سرور فعالی با ظرفیت خالی ثبت نشده است.", parse_mode="HTML")
                         return
-                    locations = []
-                    seen_locations = set()
-                    for server in servers:
-                        location = (getattr(server, "location", "") or "").strip() or "بدون لوکیشن"
-                        if location not in seen_locations:
-                            seen_locations.add(location)
-                            locations.append(location)
-                    if len(locations) > 1:
-                        buttons = [[InlineKeyboardButton(text=f"📍 {location}", callback_data=f"create_acc_custom_location_{index}")] for index, location in enumerate(locations)]
-                        buttons.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_create_account")])
-                        await message.answer(
-                            "ابتدا لوکیشن را برای ساخت اکانت انتخاب کنید:",
-                            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-                            parse_mode="HTML",
-                        )
-                        return
                     await message.answer("سرور را برای ساخت اکانت انتخاب کنید:", reply_markup=get_plan_server_select_keyboard(servers, "create_acc_custom_server_"), parse_mode="HTML")
                 finally:
                     db.close()

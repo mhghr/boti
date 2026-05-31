@@ -147,18 +147,15 @@ def get_test_account_keyboard(days_text: str = "-", traffic_text: str = "-", is_
     ])
 
 
-def get_plan_action_keyboard(plan_id: int, plan_name: str, days_text: str, traffic_text: str, price_text: str, description_text: str, is_active: bool = True, service_text: str = "-", server_text: str = "بدون سرور", has_server_mapping: bool = True):
-    if not has_server_mapping:
-        status_text = "🟠 غیرفعال (بدون سرور)"
-    else:
-        status_text = "✅ فعال" if is_active else "❌ غیرفعال"
+def get_plan_action_keyboard(plan_id: int, plan_name: str, days_text: str, traffic_text: str, price_text: str, description_text: str, is_active: bool = True, service_text: str = "-"):
+    status_text = "✅ فعال" if is_active else "❌ غیرفعال"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"📝 نام پلن: {plan_name}", callback_data=f"plan_set_name_{plan_id}")],
         [InlineKeyboardButton(text=f"⏰ مدت زمان: {days_text} روز", callback_data=f"plan_set_days_{plan_id}")],
         [InlineKeyboardButton(text=f"🌐 حجم ترافیک: {traffic_text} گیگ", callback_data=f"plan_set_traffic_{plan_id}")],
         [InlineKeyboardButton(text=f"💰 قیمت: {price_text} تومان", callback_data=f"plan_set_price_{plan_id}")],
         [InlineKeyboardButton(text=f"📄 توضیحات: {description_text}", callback_data=f"plan_set_desc_{plan_id}")],
-        [InlineKeyboardButton(text=f"🧩 سرویس: {service_text}", callback_data=f"plan_set_service_{plan_id}"), InlineKeyboardButton(text=f"🖧 سرور: {server_text}", callback_data=f"plan_set_servers_{plan_id}")],
+        [InlineKeyboardButton(text=f"🧩 سرویس: {service_text}", callback_data=f"plan_set_service_{plan_id}")],
         [InlineKeyboardButton(text=f"⚙️ وضعیت: {status_text}", callback_data=f"plan_toggle_{plan_id}")],
         [InlineKeyboardButton(text="✅ ذخیره تغییرات", callback_data=f"plan_save_{plan_id}"), InlineKeyboardButton(text="🗑️ حذف", callback_data=f"plan_delete_{plan_id}")],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_plans")]

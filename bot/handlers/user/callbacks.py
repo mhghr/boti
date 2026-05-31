@@ -38,7 +38,7 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
                 available_servers = get_available_servers_for_plan(db, plan.id)
                 server = available_servers[0] if available_servers else None
                 if not server:
-                    await callback.message.answer("❌ برای پلن اکانت تست هیچ سرور فعالی در دیتابیس مپ نشده است.", parse_mode="HTML")
+                    await callback.message.answer("❌ هیچ سرور فعالی برای پلن اکانت تست یافت نشد.", parse_mode="HTML")
                     return
                 wg_result = wireguard.create_wireguard_account(**build_wg_kwargs(server, str(user_id), plan, plan.name, plan.duration_days))
             except Exception as e:

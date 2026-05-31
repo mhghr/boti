@@ -1,14 +1,7 @@
-from models import Plan, PlanServerMap, Server, WireGuardConfig
+from models import Plan, Server, WireGuardConfig
 
 
 def get_plan_servers(db, plan_id: int):
-    mapped_servers = db.query(Server).join(PlanServerMap, PlanServerMap.server_id == Server.id).filter(
-        PlanServerMap.plan_id == plan_id,
-        Server.is_active == True,
-    ).all()
-    if mapped_servers:
-        return mapped_servers
-
     plan = db.query(Plan).filter(Plan.id == plan_id).first()
     if not plan or not plan.service_type_id:
         return []

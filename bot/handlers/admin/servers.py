@@ -91,7 +91,6 @@ async def handle_server_management_callbacks(callback: CallbackQuery, bot, data:
             if not srv:
                 await callback.message.answer("❌ سرور یافت نشد.", parse_mode="HTML")
                 return
-            db.query(PlanServerMap).filter(PlanServerMap.server_id == srv.id).delete()
             db.delete(srv)
             db.commit()
             await callback.message.answer("✅ سرور حذف شد.", parse_mode="HTML")
