@@ -1,3 +1,5 @@
+from sqlalchemy import or_
+
 from models import User, WireGuardConfig
 from config import ADMIN_IDS
 
@@ -54,8 +56,6 @@ def calculate_org_user_financials(db, user_obj: User):
 
 
 def search_users(db, query_text: str):
-    from sqlalchemy import or_, func
-
     q_raw = (query_text or "").strip()
     q = q_raw.lower()
     q_no_at = q.lstrip("@")
@@ -64,21 +64,17 @@ def search_users(db, query_text: str):
     if q_no_at:
         like_q = f"%{q_no_at}%"
         filters.extend([
-            func.lower(User.username).like(like_q),
-            func.lower(User.first_name).like(like_q),
-            func.lower(User.last_name).like(like_q),
-            func.lower((func.coalesce(User.first_name, "") + " " + func.coalesce(User.last_name, ""))).like(f"%{q}%"),
+            User.username.ilike(like_q),
+            User.first_name.ilike(like_q),
+            User.last_name.ilike(like_q),
+            User.telegram_id.like(like_q),
         ])
-
-    if q.isdigit():
-        filters.append(User.telegram_id.like(f"%{q}%"))
 
     if not filters:
         return []
 
-    users = db.query(User).filter(or_(*filters)).all()
+    users = db.query(User).filter(or_(*filters)).limit(50).all()
 
-    # Unique by telegram_id while preserving order
     seen = set()
     out = []
     for u in users:

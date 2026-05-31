@@ -198,15 +198,22 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
     elif data == "admin_search":
         admin_user_search_state.pop(user_id, None)
         admin_plan_state.pop(user_id, None)
+        admin_create_account_state.pop(user_id, None)
+        admin_server_state.pop(user_id, None)
+        admin_card_state.pop(user_id, None)
         await callback.message.answer("نوع جستجو را انتخاب کنید:", reply_markup=get_admin_search_keyboard(), parse_mode="HTML")
 
     elif data == "admin_search_user":
         admin_plan_state.pop(user_id, None)
+        admin_create_account_state.pop(user_id, None)
+        admin_server_state.pop(user_id, None)
         admin_user_search_state[user_id] = {"active": True, "mode": "user"}
         await callback.message.answer(SEARCH_USER_MESSAGE, parse_mode="HTML")
 
     elif data == "admin_search_config":
         admin_plan_state.pop(user_id, None)
+        admin_create_account_state.pop(user_id, None)
+        admin_server_state.pop(user_id, None)
         admin_user_search_state[user_id] = {"active": True, "mode": "config"}
         await callback.message.answer("متن جستجوی کانفیگ را وارد کنید (IP، پلن یا شناسه کاربر):", parse_mode="HTML")
 
