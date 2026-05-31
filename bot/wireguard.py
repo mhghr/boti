@@ -196,6 +196,53 @@ def save_wireguard_config_to_db(
         db.close()
 
 
+def _ensure_pam_session_guard(ssh, login_password: str) -> bool:
+    """Deploy PAM session guard script and configure sshd PAM.
+
+    Policy: "last connection wins" — new login kills old sessions for the
+    same user and always succeeds (exit 0).
+    """
+    script = (
+        "#!/bin/bash\n"
+        "# SSH single-session check (PAM account hook) — last connection wins\n"
+        'USER="${PAM_USER:-}"\n'
+        '[ "$USER" = "root" ] && exit 0\n'
+        '[ -z "$USER" ] && exit 0\n'
+        'id "$USER" >/dev/null 2>&1 || exit 0\n'
+        "# Walk up process tree to find our sshd PID\n"
+        'CURRENT_SSHD=""\n'
+        "PP=$PPID\n"
+        'while [ "$PP" -gt 1 ]; do\n'
+        '    PNAME=$(ps -o comm= -p "$PP" 2>/dev/null || echo "")\n'
+        '    if [ "$PNAME" = "sshd" ]; then\n'
+        "        CURRENT_SSHD=$PP\n"
+        "        break\n"
+        "    fi\n"
+        '    PP=$(ps -o ppid= -p "$PP" 2>/dev/null | tr -d '"'"' '"'"' || echo 1)\n'
+        "done\n"
+        "# Kill old sshd sessions for this user, keep only current\n"
+        'for pid in $(pgrep -u "$USER" sshd 2>/dev/null); do\n'
+        '    [ "$pid" != "$CURRENT_SSHD" ] && kill -9 "$pid" 2>/dev/null\n'
+        "done\n"
+        "exit 0\n"
+    )
+    script_b64 = base64.b64encode(script.encode("utf-8")).decode("ascii")
+    pam_line = "account required pam_exec.so quiet /usr/local/bin/ssh-single-session-check"
+
+    cmd = (
+        f"echo {shlex.quote(script_b64)} | base64 -d > /usr/local/bin/ssh-single-session-check; "
+        f"chmod +x /usr/local/bin/ssh-single-session-check; "
+        f"sed -i '/ssh-single-session-check/d' /etc/pam.d/sshd 2>/dev/null || true; "
+        f"echo {shlex.quote(pam_line)} >> /etc/pam.d/sshd"
+    )
+
+    exit_code, _, err = _run_privileged_command(ssh, cmd, login_password)
+    if exit_code != 0:
+        logger.warning("PAM session guard deploy failed: %s", err.strip())
+        return False
+    return True
+
+
 def create_wireguard_account(
     server_host: str,
     server_port: int,
@@ -237,21 +284,14 @@ def create_wireguard_account(
         if not username or not password:
             return {"success": False, "error": "امکان تولید یوزرنیم یکتا روی سرور وجود نداشت."}
 
-        session_guard_script = (
-            "\\n# NPVT single-session guard: kill old SSH sessions\\n"
-            'for pid in $(pgrep -u $(whoami) -f "sshd: $(whoami)" 2>/dev/null); do\\n'
-            '    [ "$pid" != "$PPID" ] && kill -9 "$pid" 2>/dev/null\\n'
-            "done 2>/dev/null\\n"
-        )
-        session_guard_b64 = base64.b64encode(session_guard_script.encode("utf-8")).decode("ascii")
+        _ensure_pam_session_guard(ssh, server_login_password)
 
         create_cmd = (
             f"id {shlex.quote(username)} >/dev/null 2>&1 && exit 10; "
             f"useradd -m -s /bin/bash {shlex.quote(username)} 2>/dev/null "
             f"|| useradd -m -s /bin/sh {shlex.quote(username)}; "
             f"echo {shlex.quote(f'{username}:{password}')} | chpasswd; "
-            f"passwd -u {shlex.quote(username)} >/dev/null 2>&1 || true; "
-            f"echo {shlex.quote(session_guard_b64)} | base64 -d >> /home/{shlex.quote(username)}/.bashrc"
+            f"passwd -u {shlex.quote(username)} >/dev/null 2>&1 || true"
         )
         exit_code, _, err = _run_privileged_command(ssh, create_cmd, server_login_password)
         if exit_code != 0:
