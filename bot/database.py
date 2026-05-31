@@ -144,6 +144,7 @@ def init_db():
 
         # Server columns (for legacy databases created before service type support)
         conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS service_type_id INTEGER"))
+        conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS location VARCHAR"))
         conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS host VARCHAR"))
         conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS api_port INTEGER DEFAULT 8728"))
         conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS username VARCHAR"))

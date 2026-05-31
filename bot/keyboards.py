@@ -861,3 +861,48 @@ def get_profile_keyboard(
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_main")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_servers_keyboard(server_rows: list, service_type_id: int, server_health_map: dict | None = None):
+    buttons = []
+    server_health_map = server_health_map or {}
+    for srv in server_rows:
+        health = server_health_map.get(srv.id)
+        is_ok = bool(srv.is_active and health is True)
+        status_dot = "🟢" if is_ok else "🔴"
+        location_text = f" - {srv.location}" if getattr(srv, "location", None) else ""
+        buttons.append([InlineKeyboardButton(text=f"{status_dot} {srv.name}{location_text} ({srv.host})", callback_data=f"server_view_{srv.id}")])
+    buttons.append([InlineKeyboardButton(text="➕ افزودن سرور", callback_data=f"server_add_{service_type_id}")])
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_servers")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_server_detail_keyboard(server, service_type_id: int, field_statuses: dict | None = None):
+    field_statuses = field_statuses or {}
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"⚪ نام: {server.name}", callback_data=f"server_field_{server.id}_name")],
+        [InlineKeyboardButton(text=f"⚪ لوکیشن: {server.location or '-'}", callback_data=f"server_field_{server.id}_location")],
+        [InlineKeyboardButton(text=f"{_status_dot(field_statuses.get('host'))} آی‌پی/هاست: {server.host}", callback_data=f"server_field_{server.id}_host")],
+        [InlineKeyboardButton(text=f"⚪ پورت API: {server.api_port}", callback_data=f"server_field_{server.id}_api_port")],
+        [InlineKeyboardButton(text=f"⚪ یوزرنیم: {server.username or '-'}", callback_data=f"server_field_{server.id}_username")],
+        [InlineKeyboardButton(text=f"⚪ پسورد: {'***' if server.password else '-'}", callback_data=f"server_field_{server.id}_password")],
+        [InlineKeyboardButton(text=f"{_status_dot(field_statuses.get('useradd'))} Access Check", callback_data="server_readonly")],
+        [InlineKeyboardButton(text=f"⚪ ظرفیت: {server.capacity}", callback_data=f"server_field_{server.id}_capacity")],
+        [InlineKeyboardButton(text="🗑️ حذف", callback_data=f"server_delete_{server.id}")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"admin_servers_type_{service_type_id}")],
+    ])
+
+
+def get_plan_server_select_keyboard(servers: list, prefix: str):
+    buttons = []
+    for s in servers:
+        location_text = f" - {s.location}" if getattr(s, "location", None) else ""
+        buttons.append([InlineKeyboardButton(text=f"🖧 {s.name}{location_text}", callback_data=f"{prefix}{s.id}")])
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="buy")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_plan_location_picker_keyboard(plan_id: int, locations: list[str]):
+    buttons = [[InlineKeyboardButton(text=f"📍 {location}", callback_data=f"buy_pick_location_{plan_id}_{index}")] for index, location in enumerate(locations)]
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="buy")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

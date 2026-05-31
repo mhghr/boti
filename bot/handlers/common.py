@@ -32,6 +32,7 @@ from keyboards import (
     get_admin_user_configs_keyboard, get_test_account_keyboard, get_service_types_keyboard,
     get_servers_service_type_keyboard, get_servers_keyboard, get_server_detail_keyboard,
     get_service_type_picker_keyboard, get_plan_servers_picker_keyboard, get_plan_created_actions_keyboard, get_plan_server_select_keyboard,
+    get_plan_location_picker_keyboard,
     get_representatives_keyboard, get_representative_action_keyboard,
     get_profile_keyboard, get_org_finance_keyboard,
     get_wallet_keyboard, get_admin_card_keyboard, get_admin_software_links_keyboard,
@@ -633,6 +634,7 @@ async def send_wireguard_config_file(sender, config_text: str, caption: str = No
 def get_server_field_prompt(field: str, step_num: int = None, total_steps: int = None) -> tuple:
     prompts = {
         "name": ("نام سرور:", False),
+        "location": ("لوکیشن سرور:", False),
         "host": ("هاست یا IP سرور:", False),
         "api_port": ("پورت سرور:", False),
         "username": ("نام کاربری ورود سرور:", False),
@@ -643,7 +645,7 @@ def get_server_field_prompt(field: str, step_num: int = None, total_steps: int =
 
 
 def get_server_creation_steps():
-    return ["name", "host", "api_port", "username", "password", "capacity"]
+    return ["name", "location", "host", "api_port", "username", "password", "capacity"]
 
 
 def get_connection_apps_message() -> str:

@@ -2,6 +2,12 @@ from ..common import *
 from .servers import handle_server_management_callbacks
 from .plans import handle_plan_management_callbacks
 
+
+def _get_location_bucket(server: Server) -> str:
+    location = (getattr(server, "location", "") or "").strip()
+    return location or "بدون لوکیشن"
+
+
 async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_id: int) -> bool:
     if data == "admin":
         pending_panel = load_pending_panel()
@@ -817,8 +823,26 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
             available_servers = get_available_servers_for_plan(db, plan.id)
             if available_servers:
                 user_payment_state[user_id] = {"plan_id": plan_id, "plan_name": plan.name, "price": plan.price}
+                locations = []
+                seen_locations = set()
+                for server in available_servers:
+                    location = _get_location_bucket(server)
+                    if location not in seen_locations:
+                        seen_locations.add(location)
+                        locations.append(location)
+                if len(locations) > 1:
+                    await callback.message.answer(
+                        "ابتدا لوکیشن را انتخاب کنید:",
+                        reply_markup=get_plan_location_picker_keyboard(plan.id, locations),
+                        parse_mode="HTML",
+                    )
+                    return
                 if len(available_servers) > 1:
-                    await callback.message.answer("ابتدا سرور را انتخاب کنید:", reply_markup=get_plan_server_select_keyboard(available_servers, f"buy_pick_server_{plan.id}_"), parse_mode="HTML")
+                    await callback.message.answer(
+                        "ابتدا سرور را انتخاب کنید:",
+                        reply_markup=get_plan_server_select_keyboard(available_servers, f"buy_pick_server_{plan.id}_"),
+                        parse_mode="HTML",
+                    )
                     return
                 user_payment_state[user_id]["server_id"] = available_servers[0].id
             else:
@@ -836,6 +860,57 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
         finally:
             db.close()
 
+    elif data.startswith("buy_pick_location_"):
+        parts = data.split("_")
+        plan_id = int(parts[3])
+        location_index = int(parts[4])
+        db = SessionLocal()
+        try:
+            plan = db.query(Plan).filter(Plan.id == plan_id, Plan.is_active == True).first()
+            if not plan:
+                await callback.message.answer("❌ پلن معتبر نیست.", parse_mode="HTML")
+                return
+
+            available_servers = get_available_servers_for_plan(db, plan.id)
+            if not available_servers:
+                await callback.message.answer("❌ ظرفیت سرورهای این پلن تکمیل است.", parse_mode="HTML")
+                return
+
+            locations = []
+            seen_locations = set()
+            for server in available_servers:
+                location = _get_location_bucket(server)
+                if location not in seen_locations:
+                    seen_locations.add(location)
+                    locations.append(location)
+
+            if location_index < 0 or location_index >= len(locations):
+                await callback.message.answer("❌ لوکیشن انتخاب‌شده معتبر نیست.", parse_mode="HTML")
+                return
+
+            selected_location = locations[location_index]
+            filtered_servers = [server for server in available_servers if _get_location_bucket(server) == selected_location]
+            state = user_payment_state.get(user_id, {})
+            state.update({"plan_id": plan_id, "plan_name": plan.name, "price": plan.price, "location": selected_location})
+            user_payment_state[user_id] = state
+
+            if len(filtered_servers) == 1:
+                state["server_id"] = filtered_servers[0].id
+                await callback.message.answer(
+                    f"✅ لوکیشن {selected_location} انتخاب شد. حالا روش پرداخت را انتخاب کنید:",
+                    reply_markup=get_payment_method_keyboard(plan_id),
+                    parse_mode="HTML",
+                )
+                return
+
+            await callback.message.answer(
+                f"لوکیشن {selected_location} انتخاب شد. حالا سرور را انتخاب کنید:",
+                reply_markup=get_plan_server_select_keyboard(filtered_servers, f"buy_pick_server_{plan.id}_"),
+                parse_mode="HTML",
+            )
+        finally:
+            db.close()
+
     elif data.startswith("buy_pick_server_"):
         parts = data.split("_")
         plan_id = int(parts[3])
@@ -847,7 +922,16 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
                 await callback.message.answer("❌ پلن معتبر نیست.", parse_mode="HTML")
                 return
             state = user_payment_state.get(user_id, {})
-            state.update({"plan_id": plan_id, "plan_name": plan.name, "price": plan.price, "server_id": server_id})
+            server = db.query(Server).filter(Server.id == server_id).first()
+            state.update(
+                {
+                    "plan_id": plan_id,
+                    "plan_name": plan.name,
+                    "price": plan.price,
+                    "server_id": server_id,
+                    "location": _get_location_bucket(server) if server else state.get("location"),
+                }
+            )
             user_payment_state[user_id] = state
             await callback.message.answer("✅ سرور انتخاب شد. حالا روش پرداخت را انتخاب کنید:", reply_markup=get_payment_method_keyboard(plan_id), parse_mode="HTML")
         finally:

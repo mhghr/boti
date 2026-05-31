@@ -65,6 +65,7 @@ class Server(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    location = Column(String, nullable=True)
     service_type_id = Column(Integer, ForeignKey("service_types.id"), nullable=False, index=True)
     host = Column(String, nullable=False)
     api_port = Column(Integer, default=22)
