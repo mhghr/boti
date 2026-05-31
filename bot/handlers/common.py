@@ -55,6 +55,7 @@ from services.plan_service import (
     get_plan_servers,
     get_server_active_config_count,
     get_available_servers_for_plan,
+    get_available_active_servers,
     build_wg_kwargs,
 )
 from services.card_service import get_card_info, set_card_info

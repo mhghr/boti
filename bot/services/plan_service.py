@@ -1,9 +1,20 @@
-from models import PlanServerMap, Server, WireGuardConfig
+from models import Plan, PlanServerMap, Server, WireGuardConfig
 
 
 def get_plan_servers(db, plan_id: int):
-    return db.query(Server).join(PlanServerMap, PlanServerMap.server_id == Server.id).filter(
+    mapped_servers = db.query(Server).join(PlanServerMap, PlanServerMap.server_id == Server.id).filter(
         PlanServerMap.plan_id == plan_id,
+        Server.is_active == True,
+    ).all()
+    if mapped_servers:
+        return mapped_servers
+
+    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    if not plan or not plan.service_type_id:
+        return []
+
+    return db.query(Server).filter(
+        Server.service_type_id == plan.service_type_id,
         Server.is_active == True,
     ).all()
 
@@ -17,6 +28,14 @@ def get_server_active_config_count(db, server_id: int) -> int:
 
 def get_available_servers_for_plan(db, plan_id: int):
     servers = get_plan_servers(db, plan_id)
+    return [srv for srv in servers if (srv.capacity or 0) <= 0 or get_server_active_config_count(db, srv.id) < (srv.capacity or 0)]
+
+
+def get_available_active_servers(db, service_type_id: int | None = None):
+    query = db.query(Server).filter(Server.is_active == True)
+    if service_type_id is not None:
+        query = query.filter(Server.service_type_id == service_type_id)
+    servers = query.all()
     return [srv for srv in servers if (srv.capacity or 0) <= 0 or get_server_active_config_count(db, srv.id) < (srv.capacity or 0)]
 
 

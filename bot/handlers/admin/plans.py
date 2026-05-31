@@ -1,5 +1,28 @@
 from ..common import *
 
+
+def _get_location_bucket(server: Server) -> str:
+    location = (getattr(server, "location", "") or "").strip()
+    return location or "بدون لوکیشن"
+
+
+def _get_ordered_locations(servers: list[Server]) -> list[str]:
+    locations = []
+    seen_locations = set()
+    for server in servers:
+        location = _get_location_bucket(server)
+        if location not in seen_locations:
+            seen_locations.add(location)
+            locations.append(location)
+    return locations
+
+
+def _get_location_picker_keyboard(prefix: str, locations: list[str], back_callback: str = "admin_create_account"):
+    buttons = [[InlineKeyboardButton(text=f"📍 {location}", callback_data=f"{prefix}{index}")] for index, location in enumerate(locations)]
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data=back_callback)])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: str, user_id: int) -> bool:
     if data == "admin_plans":
         admin_server_state.pop(user_id, None)
@@ -47,7 +70,47 @@ async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: s
             if not available_servers:
                 await callback.message.answer("❌ ظرفیت سرورهای این پلن تکمیل است.", parse_mode="HTML")
                 return
-            await callback.message.answer("سرور را برای ساخت اکانت انتخاب کنید:", reply_markup=get_plan_server_select_keyboard(available_servers, f"create_acc_server_{plan.id}_"), parse_mode="HTML")
+            locations = _get_ordered_locations(available_servers)
+            if len(locations) > 1:
+                await callback.message.answer(
+                    "ابتدا لوکیشن را برای ساخت اکانت انتخاب کنید:",
+                    reply_markup=_get_location_picker_keyboard(f"create_acc_plan_location_{plan.id}_", locations),
+                    parse_mode="HTML",
+                )
+                return
+            await callback.message.answer(
+                "سرور را برای ساخت اکانت انتخاب کنید:",
+                reply_markup=get_plan_server_select_keyboard(available_servers, f"create_acc_server_{plan.id}_"),
+                parse_mode="HTML",
+            )
+        finally:
+            db.close()
+
+    elif data.startswith("create_acc_plan_location_"):
+        parts = data.split("_")
+        plan_id = int(parts[4])
+        location_index = int(parts[5])
+        db = SessionLocal()
+        try:
+            plan = db.query(Plan).filter(Plan.id == plan_id, Plan.is_active == True).first()
+            if not plan:
+                await callback.message.answer("❌ پلن معتبر نیست.", parse_mode="HTML")
+                return
+            available_servers = get_available_servers_for_plan(db, plan.id)
+            if not available_servers:
+                await callback.message.answer("❌ ظرفیت سرورهای این پلن تکمیل است.", parse_mode="HTML")
+                return
+            locations = _get_ordered_locations(available_servers)
+            if location_index < 0 or location_index >= len(locations):
+                await callback.message.answer("❌ لوکیشن انتخاب‌شده معتبر نیست.", parse_mode="HTML")
+                return
+            selected_location = locations[location_index]
+            filtered_servers = [server for server in available_servers if _get_location_bucket(server) == selected_location]
+            await callback.message.answer(
+                f"لوکیشن {selected_location} انتخاب شد. حالا سرور را انتخاب کنید:",
+                reply_markup=get_plan_server_select_keyboard(filtered_servers, f"create_acc_server_{plan.id}_"),
+                parse_mode="HTML",
+            )
         finally:
             db.close()
 
@@ -142,6 +205,40 @@ async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: s
                             print(f"Error sending org create-account notification to admin {admin_id}: {e}")
             else:
                 await callback.message.answer(f"❌ خطا در ایجاد اکانت: {wg_result.get('error', 'خطای نامشخص')}", parse_mode="HTML")
+        finally:
+            db.close()
+
+    elif data.startswith("create_acc_custom_location_"):
+        location_index = int(data.split("_")[-1])
+        state = admin_create_account_state.get(user_id)
+        source_state = "admin"
+        if not state:
+            state = org_user_state.get(user_id)
+            source_state = "org"
+        if not state or state.get("step") != "server":
+            await callback.message.answer("❌ ابتدا فرایند ساخت پلن دلخواه را تکمیل کنید.", parse_mode="HTML")
+            return
+        db = SessionLocal()
+        try:
+            servers = get_available_active_servers(db)
+            if not servers:
+                await callback.message.answer("❌ هیچ سرور فعالی با ظرفیت خالی ثبت نشده است.", parse_mode="HTML")
+                return
+            locations = _get_ordered_locations(servers)
+            if location_index < 0 or location_index >= len(locations):
+                await callback.message.answer("❌ لوکیشن انتخاب‌شده معتبر نیست.", parse_mode="HTML")
+                return
+            selected_location = locations[location_index]
+            filtered_servers = [server for server in servers if _get_location_bucket(server) == selected_location]
+            if source_state == "admin":
+                admin_create_account_state[user_id] = state
+            else:
+                org_user_state[user_id] = state
+            await callback.message.answer(
+                f"لوکیشن {selected_location} انتخاب شد. حالا سرور را انتخاب کنید:",
+                reply_markup=get_plan_server_select_keyboard(filtered_servers, "create_acc_custom_server_"),
+                parse_mode="HTML",
+            )
         finally:
             db.close()
             if source_state == "admin":
