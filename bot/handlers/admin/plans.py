@@ -58,34 +58,6 @@ async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: s
         finally:
             db.close()
 
-    elif data.startswith("create_acc_plan_"):
-        plan_id = int(data.split("_")[-1])
-        db = SessionLocal()
-        try:
-            plan = db.query(Plan).filter(Plan.id == plan_id, Plan.is_active == True).first()
-            if not plan:
-                await callback.message.answer("❌ پلن یافت نشد یا غیرفعال است.", parse_mode="HTML")
-                return
-            available_servers = get_available_servers_for_plan(db, plan.id)
-            if not available_servers:
-                await callback.message.answer("❌ ظرفیت سرورهای این پلن تکمیل است.", parse_mode="HTML")
-                return
-            locations = _get_ordered_locations(available_servers)
-            if len(locations) > 1:
-                await callback.message.answer(
-                    "ابتدا لوکیشن را برای ساخت اکانت انتخاب کنید:",
-                    reply_markup=_get_location_picker_keyboard(f"create_acc_plan_location_{plan.id}_", locations),
-                    parse_mode="HTML",
-                )
-                return
-            await callback.message.answer(
-                "سرور را برای ساخت اکانت انتخاب کنید:",
-                reply_markup=get_plan_server_select_keyboard(available_servers, f"create_acc_server_{plan.id}_"),
-                parse_mode="HTML",
-            )
-        finally:
-            db.close()
-
     elif data.startswith("create_acc_plan_location_"):
         parts = data.split("_")
         plan_id = int(parts[4])
@@ -109,6 +81,34 @@ async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: s
             await callback.message.answer(
                 f"لوکیشن {selected_location} انتخاب شد. حالا سرور را انتخاب کنید:",
                 reply_markup=get_plan_server_select_keyboard(filtered_servers, f"create_acc_server_{plan.id}_"),
+                parse_mode="HTML",
+            )
+        finally:
+            db.close()
+
+    elif data.startswith("create_acc_plan_"):
+        plan_id = int(data.split("_")[-1])
+        db = SessionLocal()
+        try:
+            plan = db.query(Plan).filter(Plan.id == plan_id, Plan.is_active == True).first()
+            if not plan:
+                await callback.message.answer("❌ پلن یافت نشد یا غیرفعال است.", parse_mode="HTML")
+                return
+            available_servers = get_available_servers_for_plan(db, plan.id)
+            if not available_servers:
+                await callback.message.answer("❌ ظرفیت سرورهای این پلن تکمیل است.", parse_mode="HTML")
+                return
+            locations = _get_ordered_locations(available_servers)
+            if len(locations) > 1:
+                await callback.message.answer(
+                    "ابتدا لوکیشن را برای ساخت اکانت انتخاب کنید:",
+                    reply_markup=_get_location_picker_keyboard(f"create_acc_plan_location_{plan.id}_", locations),
+                    parse_mode="HTML",
+                )
+                return
+            await callback.message.answer(
+                "سرور را برای ساخت اکانت انتخاب کنید:",
+                reply_markup=get_plan_server_select_keyboard(available_servers, f"create_acc_server_{plan.id}_"),
                 parse_mode="HTML",
             )
         finally:
@@ -241,10 +241,6 @@ async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: s
             )
         finally:
             db.close()
-            if source_state == "admin":
-                admin_create_account_state.pop(user_id, None)
-            else:
-                org_user_state.pop(user_id, None)
 
     elif data == "create_acc_custom":
         # Start custom plan flow - ask for name first
