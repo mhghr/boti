@@ -237,12 +237,21 @@ def create_wireguard_account(
         if not username or not password:
             return {"success": False, "error": "امکان تولید یوزرنیم یکتا روی سرور وجود نداشت."}
 
+        session_guard_script = (
+            "\\n# NPVT single-session guard: kill old SSH sessions\\n"
+            'for pid in $(pgrep -u $(whoami) -f "sshd: $(whoami)" 2>/dev/null); do\\n'
+            '    [ "$pid" != "$PPID" ] && kill -9 "$pid" 2>/dev/null\\n'
+            "done 2>/dev/null\\n"
+        )
+        session_guard_b64 = base64.b64encode(session_guard_script.encode("utf-8")).decode("ascii")
+
         create_cmd = (
             f"id {shlex.quote(username)} >/dev/null 2>&1 && exit 10; "
             f"useradd -m -s /bin/bash {shlex.quote(username)} 2>/dev/null "
             f"|| useradd -m -s /bin/sh {shlex.quote(username)}; "
             f"echo {shlex.quote(f'{username}:{password}')} | chpasswd; "
-            f"passwd -u {shlex.quote(username)} >/dev/null 2>&1 || true"
+            f"passwd -u {shlex.quote(username)} >/dev/null 2>&1 || true; "
+            f"echo {shlex.quote(session_guard_b64)} | base64 -d >> /home/{shlex.quote(username)}/.bashrc"
         )
         exit_code, _, err = _run_privileged_command(ssh, create_cmd, server_login_password)
         if exit_code != 0:
