@@ -239,8 +239,8 @@ def create_wireguard_account(
 
         create_cmd = (
             f"id {shlex.quote(username)} >/dev/null 2>&1 && exit 10; "
-            f"useradd -m -s /usr/sbin/nologin {shlex.quote(username)} 2>/dev/null "
-            f"|| useradd -m -s /bin/false {shlex.quote(username)}; "
+            f"useradd -m -s /bin/bash {shlex.quote(username)} 2>/dev/null "
+            f"|| useradd -m -s /bin/sh {shlex.quote(username)}; "
             f"echo {shlex.quote(f'{username}:{password}')} | chpasswd; "
             f"passwd -u {shlex.quote(username)} >/dev/null 2>&1 || true"
         )
