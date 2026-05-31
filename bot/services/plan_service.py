@@ -32,6 +32,7 @@ def build_wg_kwargs(
     return dict(
         server_host=server.host,
         server_port=server.api_port or 22,
+        connection_host=server.wg_server_endpoint or server.host,
         server_login_username=server.username,
         server_login_password=server.password,
         user_telegram_id=str(user_id),

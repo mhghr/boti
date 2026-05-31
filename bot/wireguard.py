@@ -103,6 +103,15 @@ def _generate_password(length: int = 12) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
+def _sanitize_remarks(value: str | None) -> str:
+    safe = []
+    for ch in (value or ""):
+        if ch.isascii() and (ch.isalnum() or ch in {" ", "_", "-", "."}):
+            safe.append(ch)
+    result = "".join(safe).strip()
+    return result[:64] or "ssh"
+
+
 def _build_npvt_ssh_uri(host: str, port: int, username: str, password: str, remarks: str) -> str:
     payload = {
         "sshConfigType": "SSH-Direct",
@@ -192,6 +201,7 @@ def create_wireguard_account(
     server_port: int,
     server_login_username: str,
     server_login_password: str,
+    connection_host: str = None,
     user_telegram_id: str = None,
     plan_id: int = None,
     plan_name: str = None,
@@ -210,7 +220,8 @@ def create_wireguard_account(
     ssh = None
     try:
         ssh = _open_ssh_client(server_host, server_port, server_login_username, server_login_password)
-        remarks = (peer_name_prefix or plan_name or f"ssh-{user_telegram_id}").strip()[:64]
+        remarks = _sanitize_remarks(peer_name_prefix or plan_name or f"ssh-{user_telegram_id}")
+        public_host = (connection_host or server_host or "").strip()
 
         username = None
         password = None
@@ -237,7 +248,7 @@ def create_wireguard_account(
         if exit_code != 0:
             return {"success": False, "error": err.strip() or "ساخت یوزر SSH روی سرور ناموفق بود."}
 
-        connection_uri = _build_npvt_ssh_uri(server_host, server_port, username, password, remarks)
+        connection_uri = _build_npvt_ssh_uri(public_host, server_port, username, password, remarks)
         db_config = save_wireguard_config_to_db(
             user_telegram_id=user_telegram_id,
             plan_id=plan_id,
@@ -246,7 +257,7 @@ def create_wireguard_account(
             public_key=connection_uri,
             client_ip=username,
             wg_server_public_key=remarks,
-            wg_server_endpoint=server_host,
+            wg_server_endpoint=public_host,
             wg_server_port=server_port,
             wg_client_dns="",
             duration_days=duration_days,
@@ -264,7 +275,7 @@ def create_wireguard_account(
             "peer_comment": remarks,
             "config_id": db_config.id,
             "expires_at": db_config.expires_at,
-            "server_host": server_host,
+            "server_host": public_host,
             "server_port": int(server_port or 22),
         }
     except Exception as e:
