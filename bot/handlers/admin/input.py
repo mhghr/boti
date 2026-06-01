@@ -534,11 +534,17 @@ async def handle_admin_input(message: Message):
 
                 db = SessionLocal()
                 try:
+                    all_active = db.query(Server).filter(Server.is_active == True).count()
                     servers = get_available_active_servers(db)
                     if not servers:
-                        await message.answer("❌ هیچ سرور فعالی با ظرفیت خالی ثبت نشده است.", parse_mode="HTML")
+                        if all_active > 0:
+                            await message.answer(f"❌ {all_active} سرور فعال وجود دارد اما هیچکدام ظرفیت خالی ندارند.\n\nبا ادمین اصلی هماهنگ کنید یا ظرفیت سرورها را افزایش دهید.", parse_mode="HTML")
+                        else:
+                            await message.answer("❌ هیچ سرور فعالی ثبت نشده است.", parse_mode="HTML")
                         return
                     await message.answer("سرور را برای ساخت اکانت انتخاب کنید:", reply_markup=get_plan_server_select_keyboard(servers, "create_acc_custom_server_"), parse_mode="HTML")
+                except Exception as e:
+                    await message.answer(f"❌ خطا در دریافت لیست سرورها: {str(e)}", parse_mode="HTML")
                 finally:
                     db.close()
             except ValueError:

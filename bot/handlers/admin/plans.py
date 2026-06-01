@@ -46,7 +46,14 @@ async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: s
                 return
             available_servers = get_available_active_servers(db, plan.service_type_id)
             if not available_servers:
-                await callback.message.answer("❌ هیچ سرور فعالی با ظرفیت خالی ثبت نشده است.", parse_mode="HTML")
+                all_active = db.query(Server).filter(Server.is_active == True).count()
+                if all_active > 0:
+                    await callback.message.answer(
+                        f"❌ {all_active} سرور فعال وجود دارد اما هیچکدام ظرفیت خالی یا سرویس تطبیقی ندارند.",
+                        parse_mode="HTML"
+                    )
+                else:
+                    await callback.message.answer("❌ هیچ سرور فعالی ثبت نشده است.", parse_mode="HTML")
                 return
             await callback.message.answer(
                 "سرور را برای ساخت اکانت انتخاب کنید:",
