@@ -82,7 +82,7 @@ def _run_privileged_command(ssh, command: str, login_password: str) -> tuple[int
 def _sanitize_linux_username(value: str) -> str:
     safe = []
     for ch in (value or "").lower():
-        if ch.isalnum():
+        if ch.isascii() and ch.isalnum():
             safe.append(ch)
         elif ch in {"_", "-"}:
             safe.append(ch)
