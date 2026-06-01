@@ -19,7 +19,7 @@ from config import (
 from database import SessionLocal, init_db
 from handlers import dp
 from models import Plan, Server, ServiceType, WireGuardConfig
-from wireguard import (
+from accounts import (
     delete_wireguard_peer,
     disable_expired_or_exhausted_configs,
     sync_wireguard_usage_counters,

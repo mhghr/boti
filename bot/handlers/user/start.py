@@ -89,10 +89,14 @@ async def handle_user_menu_buttons(message: Message):
         return
 
     if text == "📱 نرم‌افزارها":
-        links = get_software_links()
+        sw_list = get_software_list()
+        if not sw_list:
+            await message.answer("❌ هیچ نرم‌افزاری ثبت نشده است.", parse_mode="HTML")
+            return
         await message.answer(
-            "📱 نرم‌افزارهای مورد نیاز\n\nبرای اتصال به وی‌پی‌ان از لینک‌های زیر نرم‌افزار مناسب دستگاه خود را دانلود کنید:",
-            reply_markup=get_software_links_keyboard(links, include_back=False),
+            "📱 نرم‌افزارهای مورد نیاز\n\n"
+            "یکی از نرم‌افزارها را انتخاب کنید:",
+            reply_markup=get_software_list_keyboard(sw_list),
             parse_mode="HTML"
         )
         return

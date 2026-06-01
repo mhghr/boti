@@ -54,4 +54,6 @@ def build_wg_kwargs(
         traffic_limit_gb=(traffic_limit_gb if traffic_limit_gb is not None else (plan.traffic_gb if plan else None)),
         server_id=server.id,
         peer_name_prefix=peer_name_prefix,
+        server_name=server.name,
+        service_type_code=(server.service_type.code if server.service_type else None),
     )

@@ -34,8 +34,9 @@ from keyboards import (
     get_service_type_picker_keyboard, get_plan_server_select_keyboard,
     get_representatives_keyboard, get_representative_action_keyboard,
     get_profile_keyboard, get_org_finance_keyboard,
-    get_wallet_keyboard, get_admin_card_keyboard, get_admin_software_links_keyboard,
-    get_software_links_keyboard
+    get_wallet_keyboard, get_admin_card_keyboard, get_admin_software_list_keyboard, get_admin_software_detail_keyboard,
+    get_software_links_keyboard, get_change_location_keyboard,
+    get_software_list_keyboard
 )
 
 from texts import (
@@ -58,7 +59,7 @@ from services.plan_service import (
     build_wg_kwargs,
 )
 from services.card_service import get_card_info, set_card_info
-from services.software_links_service import get_software_links, set_software_link
+from services.software_links_service import get_software_links, set_software_link, get_software_list, add_software, update_software_link, delete_software
 from services.server_service import evaluate_server_parameters
 
 dp = Dispatcher()

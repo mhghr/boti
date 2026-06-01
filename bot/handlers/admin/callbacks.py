@@ -18,22 +18,66 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
         await callback.message.answer("💳 مدیریت اطلاعات کارت", reply_markup=get_admin_card_keyboard(card_number, card_holder), parse_mode="HTML")
 
     elif data == "admin_software_links":
-        links = get_software_links()
+        sw_list = get_software_list()
         await callback.message.answer(
             "📱 مدیریت لینک نرم‌افزارها",
-            reply_markup=get_admin_software_links_keyboard(links),
+            reply_markup=get_admin_software_list_keyboard(sw_list),
             parse_mode="HTML",
         )
 
-    elif data in {"admin_software_ios", "admin_software_android", "admin_software_windows"}:
-        platform_map = {
-            "admin_software_ios": ("ios", "iPhone"),
-            "admin_software_android": ("android", "Android"),
-            "admin_software_windows": ("windows", "Windows"),
+    elif data == "admin_software_add":
+        admin_software_links_state[user_id] = {
+            "mode": "add",
+            "step": "name",
+            "name": "",
+            "ios": "",
+            "android": "",
         }
-        platform_key, platform_label = platform_map[data]
-        admin_software_links_state[user_id] = {"platform": platform_key}
-        await callback.message.answer(f"لینک جدید {platform_label} را وارد کنید:", parse_mode="HTML")
+        await callback.message.answer("📝 نام نرم‌افزار جدید را وارد کنید:", parse_mode="HTML")
+
+    elif data == "admin_software_info_ro":
+        await callback.answer("این بخش فقط جهت نمایش است.", show_alert=True)
+
+    elif data.startswith("admin_software_del_"):
+        index = int(data.replace("admin_software_del_", ""))
+        sw_list = delete_software(index)
+        await callback.message.answer("✅ نرم‌افزار حذف شد.", parse_mode="HTML")
+        await callback.message.answer(
+            "📱 مدیریت لینک نرم‌افزارها",
+            reply_markup=get_admin_software_list_keyboard(sw_list),
+            parse_mode="HTML",
+        )
+
+    elif data.startswith("admin_software_edit_"):
+        parts = data.replace("admin_software_edit_", "").split("_")
+        index = int(parts[0])
+        platform = parts[1]
+        platform_label = {"ios": "iPhone", "android": "Android", "windows": "Windows"}.get(platform, platform)
+        sw_list = get_software_list()
+        if 0 <= index < len(sw_list):
+            admin_software_links_state[user_id] = {
+                "mode": "edit",
+                "index": index,
+                "platform": platform,
+            }
+            await callback.message.answer(
+                f"لینک جدید {platform_label} برای {sw_list[index].get('name', '')} را وارد کنید:",
+                parse_mode="HTML"
+            )
+        else:
+            await callback.answer("❌ نرم‌افزار یافت نشد.", show_alert=True)
+
+    elif data.startswith("admin_software_"):
+        index = int(data.replace("admin_software_", ""))
+        sw_list = get_software_list()
+        if 0 <= index < len(sw_list):
+            await callback.message.answer(
+                f"📦 مدیریت {sw_list[index].get('name', '')}",
+                reply_markup=get_admin_software_detail_keyboard(sw_list[index], index),
+                parse_mode="HTML",
+            )
+        else:
+            await callback.answer("❌ نرم‌افزار یافت نشد.", show_alert=True)
 
     elif data in {"admin_card_ro", "admin_card_edit"}:
         admin_card_state[user_id] = {"step": "card_number"}
@@ -370,10 +414,10 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
 
             # Disable in MikroTik
             try:
-                import wireguard
+                import accounts
                 server = db.query(Server).filter(Server.id == config.server_id, Server.is_active == True).first()
                 if server:
-                    wireguard.disable_wireguard_peer(
+                    accounts.disable_wireguard_peer(
                         mikrotik_host=server.host,
                         mikrotik_user=server.username,
                         mikrotik_pass=server.password,
@@ -441,10 +485,10 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
 
             # Delete from MikroTik
             try:
-                import wireguard
+                import accounts
                 server = db.query(Server).filter(Server.id == config.server_id, Server.is_active == True).first()
                 if server:
-                    wireguard.delete_wireguard_peer(
+                    accounts.delete_wireguard_peer(
                         mikrotik_host=server.host,
                         mikrotik_user=server.username,
                         mikrotik_pass=server.password,
@@ -1009,8 +1053,8 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
                     reset_ok = False
                     if server:
                         try:
-                            import wireguard
-                            reset_ok = wireguard.reset_wireguard_peer_traffic(
+                            import accounts
+                            reset_ok = accounts.reset_wireguard_peer_traffic(
                                 mikrotik_host=server.host,
                                 mikrotik_user=server.username,
                                 mikrotik_pass=server.password,
@@ -1064,7 +1108,7 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
                 client_ip = "N/A"
 
                 try:
-                    import wireguard
+                    import accounts
                     plan = db.query(Plan).filter(Plan.id == receipt.plan_id).first()
                     server = db.query(Server).filter(Server.id == receipt.server_id).first() if receipt.server_id else None
                     if not server and plan:
@@ -1072,39 +1116,46 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
                         server = available[0] if available else None
                     if not server:
                         raise ValueError("سرور در دسترس برای این پلن وجود ندارد")
-                    wg_result = wireguard.create_wireguard_account(**build_wg_kwargs(server, receipt.user_telegram_id, plan, receipt.plan_name, plan.duration_days if plan else None))
+                    wg_result = accounts.create_wireguard_account(**build_wg_kwargs(server, receipt.user_telegram_id, plan, receipt.plan_name, plan.duration_days if plan else None))
 
                     if wg_result.get("success"):
                         wg_created = True
                         client_ip = wg_result.get("client_ip", "N/A")
 
-                        # Send config to user
+                        # Send config to user — single message with QR + info
                         try:
                             user_tg_id = int(receipt.user_telegram_id)
                             config = wg_result.get("config", "")
 
-                            # Send QR code if available
+                            user_record = db.query(User).filter(User.telegram_id == str(user_tg_id)).first()
+                            tg_username = f"@{user_record.username}" if user_record and user_record.username else "ندارد"
+
+                            caption_text = (
+                                "✅ پرداخت شما تایید شد\n\n"
+                                f"🆔 آیدی تلگرام: {user_tg_id}\n"
+                                f"📛 نام کاربری: {tg_username}\n"
+                                f"📦 پلن خریداری شده: {receipt.plan_name}\n\n"
+                                f"🔗 لینک کانفیگ شما:\n{config}"
+                            )
+
                             if wg_result.get("qr_code"):
                                 try:
                                     await send_qr_code(
                                         callback.message.bot,
                                         wg_result.get("qr_code"),
-                                        (
-                                            "📷 QR Code\n\n"
-                                            "➕ این تصویر را در برنامه خود اضافه کنید\n\n"
-                                            f"🏷 نام کانفیگ: {wg_result.get('peer_comment', 'نامشخص')}\n"
-                                            f"📦 پلن انتخابی: {receipt.plan_name}"
-                                        ),
+                                        caption_text,
                                         chat_id=user_tg_id
                                     )
                                 except Exception as e:
                                     print(f"Error sending QR code to user: {e}")
-                            if config:
-                                await send_wireguard_config_file(
-                                    callback.message.bot,
-                                    config,
-                                    caption="Link",
+                                    await callback.message.bot.send_message(
+                                        chat_id=user_tg_id,
+                                        text=caption_text,
+                                    )
+                            else:
+                                await callback.message.bot.send_message(
                                     chat_id=user_tg_id,
+                                    text=caption_text,
                                 )
                         except Exception as e:
                             print(f"Error sending to user: {e}")

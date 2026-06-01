@@ -1,4 +1,5 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from collections import defaultdict
 
 
 def get_main_keyboard(is_admin_user: bool = False):
@@ -373,6 +374,7 @@ def get_config_detail_keyboard(
         [InlineKeyboardButton(text=f"🔘 وضعیت: {details.get('status', '-')}", callback_data=f"cfg_ro_{config_id}")],
     ]
     buttons.append([InlineKeyboardButton(text="♻️ تمدید", callback_data=f"cfg_renew_{config_id}")])
+    buttons.append([InlineKeyboardButton(text="📍 تغییر لوکیشن", callback_data=f"cfg_changeloc_{config_id}")])
     buttons.append([InlineKeyboardButton(text="🗑 حذف", callback_data=f"cfg_delete_{config_id}")])
     buttons.append([
         InlineKeyboardButton(text="🔙 بازگشت", callback_data="configs"),
@@ -397,6 +399,29 @@ def get_renew_confirmation_keyboard(config_id: int):
             InlineKeyboardButton(text="❌ خیر", callback_data="cfg_renew_force_no"),
         ]
     ])
+
+
+def get_change_location_keyboard(
+    config_id: int,
+    available_servers: list,
+):
+    buttons = []
+    by_location = defaultdict(list)
+    for srv in available_servers:
+        loc = (srv.location or "").strip() or "نامشخص"
+        by_location[loc].append(srv)
+
+    if not by_location:
+        buttons.append([InlineKeyboardButton(text="❌ لوکیشن دیگری در دسترس نیست", callback_data="cfg_changeloc_none")])
+    else:
+        for loc in sorted(by_location.keys()):
+            buttons.append([InlineKeyboardButton(text=f"📍 {loc}", callback_data="cfg_changeloc_hdr")])
+            for srv in by_location[loc]:
+                label = f"🖥 {srv.name}"
+                buttons.append([InlineKeyboardButton(text=label, callback_data=f"cfg_changeloc_srv_{config_id}_{srv.id}")])
+
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"cfg_view_{config_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def get_admin_user_configs_keyboard(user_id: int, configs: list):
@@ -763,23 +788,57 @@ def get_admin_keyboard(pending_panel=None):
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_admin_software_links_keyboard(links: dict[str, str]):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"🍎 iPhone: {links.get('ios', '-')}", callback_data="admin_software_ios")],
-        [InlineKeyboardButton(text=f"📱 Android: {links.get('android', '-')}", callback_data="admin_software_android")],
-        [InlineKeyboardButton(text=f"💻 Windows: {links.get('windows', '-')}", callback_data="admin_software_windows")],
-        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin")],
-    ])
+def get_admin_software_list_keyboard(software_list: list[dict]):
+    buttons = []
+    for i, sw in enumerate(software_list):
+        name = sw.get("name") or f"نرم‌افزار {i+1}"
+        buttons.append([InlineKeyboardButton(text=f"📦 {name}", callback_data=f"admin_software_{i}")])
+    buttons.append([InlineKeyboardButton(text="➕ افزودن نرم‌افزار جدید", callback_data="admin_software_add")])
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_software_links_keyboard(links: dict[str, str], include_back: bool = True):
+def get_admin_software_detail_keyboard(software: dict, index: int):
+    name = software.get("name") or "-"
     buttons = [
-        [InlineKeyboardButton(text="🍎 آیفون (iPhone)", url=links.get("ios", ""))],
-        [InlineKeyboardButton(text="📱 اندروید", url=links.get("android", ""))],
-        [InlineKeyboardButton(text="💻 ویندوز", url=links.get("windows", ""))],
+        [InlineKeyboardButton(text=f"📦 نام: {name}", callback_data="admin_software_info_ro")],
+        [InlineKeyboardButton(text=f"🍎 iPhone: {software.get('ios') or '-'}", callback_data=f"admin_software_edit_{index}_ios")],
+        [InlineKeyboardButton(text=f"📱 Android: {software.get('android') or '-'}", callback_data=f"admin_software_edit_{index}_android")],
+        [InlineKeyboardButton(text=f"💻 Windows: {software.get('windows') or '-'}", callback_data=f"admin_software_edit_{index}_windows")],
+        [InlineKeyboardButton(text="🗑 حذف این نرم‌افزار", callback_data=f"admin_software_del_{index}")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_software_links")],
     ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_software_list_keyboard(software_list: list[dict]):
+    buttons = []
+    for i, sw in enumerate(software_list):
+        name = sw.get("name") or f"نرم‌افزار {i+1}"
+        buttons.append([InlineKeyboardButton(text=f"📦 {name}", callback_data=f"software_{i}")])
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_main")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_software_links_keyboard(software: dict, index: int = 0, include_back: bool = True):
+    name = software.get("name") or "-"
+    ios_url = software.get("ios") or ""
+    android_url = software.get("android") or ""
+    windows_url = software.get("windows") or ""
+    buttons = [
+        [InlineKeyboardButton(text=f"📦 {name}", callback_data="software_ro")],
+    ]
+    link_buttons = []
+    if ios_url:
+        link_buttons.append(InlineKeyboardButton(text="🍎 آیفون (iPhone)", url=ios_url))
+    if android_url:
+        link_buttons.append(InlineKeyboardButton(text="📱 اندروید", url=android_url))
+    if windows_url:
+        link_buttons.append(InlineKeyboardButton(text="💻 ویندوز", url=windows_url))
+    if link_buttons:
+        buttons.append(link_buttons)
     if include_back:
-        buttons.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_to_main")])
+        buttons.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="software")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

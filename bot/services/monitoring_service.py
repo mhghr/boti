@@ -7,7 +7,7 @@ from aiogram.exceptions import TelegramBadRequest
 
 from database import SessionLocal
 from models import Server, ServiceType, WireGuardConfig, Plan
-from wireguard import sync_wireguard_usage_counters, disable_expired_or_exhausted_configs, delete_wireguard_peer
+from accounts import sync_wireguard_usage_counters, disable_expired_or_exhausted_configs, delete_wireguard_peer
 
 ONE_GB_IN_BYTES = 1 * (1024 ** 3)
 TEST_ACCOUNT_PLAN_NAME = "اکانت تست"

@@ -34,13 +34,13 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
                 return
 
             try:
-                import wireguard
+                import accounts
                 available_servers = get_available_servers_for_plan(db, plan.id)
                 server = available_servers[0] if available_servers else None
                 if not server:
                     await callback.message.answer("❌ هیچ سرور فعالی برای پلن اکانت تست یافت نشد.", parse_mode="HTML")
                     return
-                wg_result = wireguard.create_wireguard_account(**build_wg_kwargs(server, str(user_id), plan, plan.name, plan.duration_days))
+                wg_result = accounts.create_wireguard_account(**build_wg_kwargs(server, str(user_id), plan, plan.name, plan.duration_days))
             except Exception as e:
                 await callback.message.answer(f"❌ خطا در ایجاد اکانت تست: {str(e)}", parse_mode="HTML")
                 return
@@ -90,14 +90,38 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
         finally:
             db.close()
 
+    elif data == "software_ro":
+        await callback.answer("📦 برای دانلود روی لینک‌های زیر کلیک کنید", show_alert=True)
+
     elif data == "software":
-        links = get_software_links()
+        sw_list = get_software_list()
+        if not sw_list:
+            await callback.message.answer("❌ هیچ نرم‌افزاری ثبت نشده است.", parse_mode="HTML")
+            return
         await callback.message.answer(
             "📱 نرم‌افزارهای مورد نیاز\n\n"
-            "برای اتصال به وی‌پی‌ان از لینک‌های زیر نرم‌افزار مناسب دستگاه خود را دانلود کنید:",
-            reply_markup=get_software_links_keyboard(links),
+            "یکی از نرم‌افزارها را انتخاب کنید:",
+            reply_markup=get_software_list_keyboard(sw_list),
             parse_mode="HTML"
         )
+
+    elif data.startswith("software_"):
+        index_str = data.replace("software_", "")
+        if not index_str.isdigit():
+            await callback.answer("دستور نامعتبر است.", show_alert=True)
+            return
+        index = int(index_str)
+        sw_list = get_software_list()
+        if 0 <= index < len(sw_list):
+            sw = sw_list[index]
+            await callback.message.answer(
+                f"📱 لینک‌های دانلود {sw.get('name', '')}\n\n"
+                "برای نصب روی لینک دستگاه خود کلیک کنید:",
+                reply_markup=get_software_links_keyboard(sw, index),
+                parse_mode="HTML"
+            )
+        else:
+            await callback.answer("❌ نرم‌افزار یافت نشد.", show_alert=True)
 
     elif data == "configs":
         db = SessionLocal()
@@ -167,6 +191,165 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
         finally:
             db.close()
 
+    elif data == "cfg_changeloc_hdr":
+        await callback.answer("📍 برای انتخاب سرور روی گزینه‌های زیر کلیک کنید", show_alert=True)
+
+    elif data == "cfg_changeloc_none":
+        await callback.answer("❌ لوکیشن دیگری در دسترس نیست", show_alert=True)
+
+    elif data.startswith("cfg_changeloc_srv_"):
+        parts = data.split("_")
+        config_id = int(parts[3])
+        target_server_id = int(parts[4])
+
+        db = SessionLocal()
+        try:
+            old_config = db.query(WireGuardConfig).filter(
+                WireGuardConfig.id == config_id,
+                WireGuardConfig.user_telegram_id == str(user_id)
+            ).first()
+            if not old_config:
+                await callback.message.answer("❌ کانفیگ یافت نشد.", parse_mode="HTML")
+                return
+
+            if old_config.status != "active":
+                await callback.message.answer("❌ فقط کانفیگ‌های فعال قابل انتقال هستند.", parse_mode="HTML")
+                return
+
+            target_server = db.query(Server).filter(
+                Server.id == target_server_id, Server.is_active == True
+            ).first()
+            if not target_server:
+                await callback.message.answer("❌ سرور مقصد یافت نشد.", parse_mode="HTML")
+                return
+
+            old_server = db.query(Server).filter(Server.id == old_config.server_id).first() if old_config.server_id else None
+            plan = db.query(Plan).filter(Plan.id == old_config.plan_id).first() if old_config.plan_id else None
+
+            now = datetime.utcnow()
+            expires_at = get_config_expires_at(old_config, plan)
+            if expires_at and expires_at > now:
+                remaining_days = max(1, (expires_at - now).days)
+            else:
+                remaining_days = old_config.duration_days or 1
+
+            supports_traffic = supports_traffic_tracking(old_config)
+            if supports_traffic:
+                _, remaining_bytes = get_config_remaining_bytes(old_config, plan)
+                remaining_traffic_gb = max(0.1, remaining_bytes / (1024 ** 3)) if remaining_bytes else (old_config.traffic_limit_gb or 0)
+            else:
+                remaining_traffic_gb = old_config.traffic_limit_gb
+
+            if old_server:
+                try:
+                    import accounts
+                    accounts.delete_wireguard_peer(
+                        mikrotik_host=old_server.host,
+                        mikrotik_user=old_server.username,
+                        mikrotik_pass=old_server.password,
+                        mikrotik_port=old_server.api_port,
+                        wg_interface="",
+                        client_ip=old_config.client_ip,
+                    )
+                except Exception as e:
+                    print(f"Failed to delete old peer during location change: {e}")
+
+            import accounts
+            plan_name = old_config.plan_name or (plan.name if plan else "")
+            wg_result = accounts.create_wireguard_account(
+                **build_wg_kwargs(
+                    target_server,
+                    str(user_id),
+                    plan,
+                    plan_name,
+                    remaining_days,
+                    traffic_limit_gb=remaining_traffic_gb if remaining_traffic_gb else None,
+                )
+            )
+
+            if not wg_result.get("success"):
+                await callback.message.answer(
+                    f"❌ خطا در ایجاد اکانت جدید: {wg_result.get('error', 'خطای نامشخص')}",
+                    parse_mode="HTML"
+                )
+                return
+
+            old_config.status = "transferred"
+            db.commit()
+
+            new_client_ip = wg_result.get("client_ip", "-")
+            new_server_name = target_server.name or "-"
+            new_expires_at = wg_result.get("expires_at")
+            new_expires_text = format_jalali_date(new_expires_at) if new_expires_at else "-"
+
+            await callback.message.answer(
+                f"✅ انتقال لوکیشن با موفقیت انجام شد\n\n"
+                f"📦 کانفیگ جدید:\n"
+                f"🖥 سرور: {new_server_name}\n"
+                f"👤 نام کاربری: {new_client_ip}\n"
+                f"📅 انقضا: {new_expires_text}\n"
+                f"📊 حجم: {remaining_traffic_gb if remaining_traffic_gb else 'نامحدود'} گیگابایت",
+                parse_mode="HTML"
+            )
+
+            if wg_result.get("config"):
+                await send_wireguard_config_file(callback.message, wg_result.get("config"), caption="📄 فایل اتصال")
+            if wg_result.get("qr_code"):
+                await send_qr_code(callback.message, wg_result.get("qr_code"), "QR Code - New Location")
+
+        finally:
+            db.close()
+
+    elif data.startswith("cfg_changeloc_"):
+        config_id = int(data.replace("cfg_changeloc_", ""))
+
+        db = SessionLocal()
+        try:
+            config = db.query(WireGuardConfig).filter(
+                WireGuardConfig.id == config_id,
+                WireGuardConfig.user_telegram_id == str(user_id)
+            ).first()
+            if not config:
+                await callback.message.answer("❌ کانفیگ یافت نشد.", parse_mode="HTML")
+                return
+
+            if config.status != "active":
+                await callback.message.answer("❌ فقط کانفیگ‌های فعال قابل انتقال هستند.", parse_mode="HTML")
+                return
+
+            current_server = db.query(Server).filter(Server.id == config.server_id).first() if config.server_id else None
+            current_location = (current_server.location or "").strip() if current_server else ""
+
+            plan = db.query(Plan).filter(Plan.id == config.plan_id).first() if config.plan_id else None
+            service_type_id = plan.service_type_id if plan else (current_server.service_type_id if current_server else None)
+
+            if not service_type_id:
+                await callback.message.answer("❌ نوع سرویس قابل تشخیص نیست.", parse_mode="HTML")
+                return
+
+            all_active = db.query(Server).filter(
+                Server.service_type_id == service_type_id,
+                Server.is_active == True
+            ).all()
+
+            available = [
+                s for s in all_active
+                if (s.location or "").strip() != current_location
+            ]
+
+            if not available:
+                await callback.message.answer("❌ هیچ لوکیشن دیگری با این سرویس در دسترس نیست.", parse_mode="HTML")
+                return
+
+            await callback.message.answer(
+                "📍 انتخاب لوکیشن جدید\n\n"
+                "لطفاً لوکیشن و سرور مورد نظر را انتخاب کنید:",
+                reply_markup=get_change_location_keyboard(config_id, available),
+                parse_mode="HTML"
+            )
+        finally:
+            db.close()
+
     elif data.startswith("cfg_ro_"):
         await callback.answer("این بخش فقط جهت نمایش است.", show_alert=False)
 
@@ -189,8 +372,8 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
             server = db.query(Server).filter(Server.id == cfg.server_id, Server.is_active == True).first() if cfg.server_id else None
             if server:
                 try:
-                    import wireguard
-                    wireguard.disable_wireguard_peer(
+                    import accounts
+                    accounts.disable_wireguard_peer(
                         mikrotik_host=server.host,
                         mikrotik_user=server.username,
                         mikrotik_pass=server.password,

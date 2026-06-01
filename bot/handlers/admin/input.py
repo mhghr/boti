@@ -28,20 +28,78 @@ async def handle_admin_input(message: Message):
 
     if user_id in admin_software_links_state:
         state = admin_software_links_state[user_id]
-        platform = state.get("platform")
-        url = text.strip()
-        if not url.startswith(("http://", "https://")):
-            await message.answer("❌ لینک باید با http:// یا https:// شروع شود.", parse_mode="HTML")
+        mode = state.get("mode")
+
+        if mode == "edit":
+            platform = state.get("platform")
+            index = state.get("index")
+            url = text.strip()
+            if not url.startswith(("http://", "https://")):
+                await message.answer("❌ لینک باید با http:// یا https:// شروع شود.", parse_mode="HTML")
+                return
+            sw_list = update_software_link(index, platform, url)
+            admin_software_links_state.pop(user_id, None)
+            await message.answer("✅ لینک نرم‌افزار به‌روزرسانی شد.", parse_mode="HTML")
+            if 0 <= index < len(sw_list):
+                await message.answer(
+                    f"📦 مدیریت {sw_list[index].get('name', '')}",
+                    reply_markup=get_admin_software_detail_keyboard(sw_list[index], index),
+                    parse_mode="HTML",
+                )
             return
-        links = set_software_link(platform, url)
-        admin_software_links_state.pop(user_id, None)
-        await message.answer("✅ لینک نرم‌افزار به‌روزرسانی شد.", parse_mode="HTML")
-        await message.answer(
-            "📱 مدیریت لینک نرم‌افزارها",
-            reply_markup=get_admin_software_links_keyboard(links),
-            parse_mode="HTML",
-        )
-        return
+
+        elif mode == "add":
+            step = state.get("step")
+            if step == "name":
+                name = text.strip()
+                if not name:
+                    await message.answer("❌ نام نمی‌تواند خالی باشد.", parse_mode="HTML")
+                    return
+                state["name"] = name
+                state["step"] = "ios"
+                await message.answer(f"لینک دانلود iOS (iPhone) برای {name} را وارد کنید\n(در صورت نداشتن - بفرستید):", parse_mode="HTML")
+                return
+            elif step == "ios":
+                url = text.strip()
+                if url != "-" and url and not url.startswith(("http://", "https://")):
+                    await message.answer("❌ لینک باید با http:// یا https:// شروع شود (یا - برای رد کردن).", parse_mode="HTML")
+                    return
+                state["ios"] = "" if url == "-" else url
+                state["step"] = "android"
+                await message.answer(f"لینک دانلود Android برای {state.get('name')} را وارد کنید\n(در صورت نداشتن - بفرستید):", parse_mode="HTML")
+                return
+            elif step == "android":
+                url = text.strip()
+                if url != "-" and url and not url.startswith(("http://", "https://")):
+                    await message.answer("❌ لینک باید با http:// یا https:// شروع شود (یا - برای رد کردن).", parse_mode="HTML")
+                    return
+                state["android"] = "" if url == "-" else url
+                state["step"] = "windows"
+                await message.answer(f"لینک دانلود Windows برای {state.get('name')} را وارد کنید\n(در صورت نداشتن - بفرستید):", parse_mode="HTML")
+                return
+            elif step == "windows":
+                url = text.strip()
+                if url != "-" and url and not url.startswith(("http://", "https://")):
+                    await message.answer("❌ لینک باید با http:// یا https:// شروع شود (یا - برای رد کردن).", parse_mode="HTML")
+                    return
+                windows_url = "" if url == "-" else url
+                sw_list = add_software(
+                    state["name"],
+                    ios=state["ios"],
+                    android=state["android"],
+                    windows=windows_url,
+                )
+                admin_software_links_state.pop(user_id, None)
+                await message.answer(f"✅ نرم‌افزار {state['name']} با موفقیت اضافه شد.", parse_mode="HTML")
+                await message.answer(
+                    "📱 مدیریت لینک نرم‌افزارها",
+                    reply_markup=get_admin_software_list_keyboard(sw_list),
+                    parse_mode="HTML",
+                )
+                return
+
+        else:
+            admin_software_links_state.pop(user_id, None)
 
     # Handle wallet adjust flow
     if user_id in admin_wallet_adjust_state:

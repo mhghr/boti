@@ -90,12 +90,19 @@ def _sanitize_linux_username(value: str) -> str:
     return result or "vpnuser"
 
 
-def _generate_username(user_telegram_id: str, peer_name_prefix: str | None = None) -> str:
-    tail = "".join(ch for ch in str(user_telegram_id or "") if ch.isdigit())[-8:] or secrets.token_hex(3)
-    prefix = _sanitize_linux_username(peer_name_prefix or "ssh")
-    base = f"{prefix[:10]}_{tail}"
+def _generate_username(
+    user_telegram_id: str,
+    server_name: str = "",
+    service_type_code: str = "",
+    peer_name_prefix: str | None = None,
+) -> str:
+    svc = _sanitize_linux_username(service_type_code or "ssh")
+    srv = _sanitize_linux_username(server_name or "")
+    tid = "".join(ch for ch in str(user_telegram_id or "") if ch.isdigit()) or "0"
     suffix = secrets.token_hex(2)
-    return f"{base[:27]}_{suffix}"[:32]
+    segments = [s for s in (svc, srv, tid) if s]
+    base = "-".join(segments)
+    return f"{base[:27]}-{suffix}"[:32]
 
 
 def _generate_password(length: int = 12) -> str:
@@ -256,6 +263,8 @@ def create_wireguard_account(
     traffic_limit_gb: float = None,
     server_id: int = None,
     peer_name_prefix: str = None,
+    server_name: str = None,
+    service_type_code: str = None,
 ) -> dict:
     if not PARAMIKO_AVAILABLE:
         return {"success": False, "error": "ماژول paramiko نصب نشده است."}
@@ -267,13 +276,17 @@ def create_wireguard_account(
     ssh = None
     try:
         ssh = _open_ssh_client(server_host, server_port, server_login_username, server_login_password)
-        remarks = _sanitize_remarks(peer_name_prefix or plan_name or f"ssh-{user_telegram_id}")
+        svc_code = service_type_code or "ssh"
+        srv_name = server_name or ""
+        random_digits = str(secrets.randbelow(9000) + 1000)
+        remarks_parts = [p for p in (svc_code, srv_name, str(user_telegram_id), random_digits) if p]
+        remarks = _sanitize_remarks(" - ".join(remarks_parts))
         public_host = (connection_host or server_host or "").strip()
 
         username = None
         password = None
         for _ in range(5):
-            candidate = _generate_username(user_telegram_id, peer_name_prefix)
+            candidate = _generate_username(user_telegram_id, srv_name, svc_code, peer_name_prefix)
             check_cmd = f"id {shlex.quote(candidate)} >/dev/null 2>&1"
             exit_code, _, _ = _run_privileged_command(ssh, check_cmd, server_login_password)
             if exit_code != 0:

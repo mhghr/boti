@@ -67,8 +67,8 @@ async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: s
             if not plan or not server:
                 await callback.message.answer("❌ پلن/سرور نامعتبر است.", parse_mode="HTML")
                 return
-            import wireguard
-            wg_result = wireguard.create_wireguard_account(**build_wg_kwargs(server, str(user_id), plan, plan.name, plan.duration_days, traffic_limit_gb=plan.traffic_gb))
+            import accounts
+            wg_result = accounts.create_wireguard_account(**build_wg_kwargs(server, str(user_id), plan, plan.name, plan.duration_days, traffic_limit_gb=plan.traffic_gb))
             if wg_result.get("success"):
                 await callback.message.answer(f"✅ اکانت روی سرور {server.name} ایجاد شد.", parse_mode="HTML")
                 if wg_result.get("config"):
@@ -101,8 +101,8 @@ async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: s
             days = int(state.get("days") or 0)
             traffic = float(state.get("traffic") or 0)
             owner_tg = str(user_id)
-            import wireguard
-            wg_result = wireguard.create_wireguard_account(
+            import accounts
+            wg_result = accounts.create_wireguard_account(
                 **build_wg_kwargs(
                     server,
                     owner_tg,
@@ -152,6 +152,7 @@ async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: s
 
     elif data == "create_acc_custom":
         # Start custom plan flow - ask for name first
+        admin_software_links_state.pop(user_id, None)
         admin_create_account_state[user_id] = {"step": "name"}
         await callback.message.answer(
             "📝 ساخت پلن دلخواه\n\nلطفاً یک نام برای کانفیگ وارد کنید:",
