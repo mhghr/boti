@@ -401,39 +401,52 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
 
             client_ip = cfg.client_ip
             server_msg = ""
-            import accounts
+
             server = db.query(Server).filter(Server.id == cfg.server_id, Server.is_active == True).first()
             if server:
-                deleted = False
+                import accounts
+                import socket as sock_mod
+                connect_host = server.domain or server.host
                 try:
-                    deleted = accounts.delete_wireguard_peer(
-                        mikrotik_host=server.domain or server.host,
-                        mikrotik_user=server.username,
-                        mikrotik_pass=server.password,
-                        mikrotik_port=server.api_port,
-                        wg_interface=server.wg_interface,
-                        client_ip=client_ip,
-                        fallback_host=server.host,
-                    )
-                except Exception as e:
-                    server_msg = "❗ اتصال به سرور برقرار نشد، فقط از دیتابیس حذف شد."
-                else:
-                    if deleted:
+                    sock_mod.getaddrinfo(connect_host, 22, 0, sock_mod.SOCK_STREAM)
+                except sock_mod.gaierror:
+                    connect_host = server.host
+
+                try:
+                    ssh = accounts._open_ssh_client(connect_host, server.api_port or 22, server.username, server.password)
+                    del_cmd = f"userdel -r {accounts.shlex.quote(client_ip)} >/dev/null 2>&1 || userdel {accounts.shlex.quote(client_ip)}"
+                    exit_code, _, err = accounts._run_privileged_command(ssh, del_cmd, server.password)
+                    ssh.close()
+                    if exit_code == 0:
                         server_msg = "✅ اکانت از روی سرور حذف شد."
-                    else:
+                    elif "does not exist" in err.lower() or "does not exist" in err or "not found" in err.lower() or exit_code == 6:
                         server_msg = "⚠️ اکانت روی سرور یافت نشد، فقط از دیتابیس حذف شد."
+                    else:
+                        server_msg = f"⚠️ خطا در حذف اکانت از سرور (exit={exit_code})، فقط از دیتابیس حذف شد."
+                except Exception as e:
+                    err_str = str(e).lower()
+                    if "authentication failed" in err_str:
+                        server_msg = "❗ احراز هویت SSH سرور ناموفق بود، فقط از دیتابیس حذف شد."
+                    elif "unable to connect" in err_str or "timed out" in err_str or "timeout" in err_str:
+                        server_msg = "❗ اتصال به سرور برقرار نشد، فقط از دیتابیس حذف شد."
+                    else:
+                        server_msg = f"❗ خطا در اتصال به سرور، فقط از دیتابیس حذف شد."
             else:
                 server_msg = "⚠️ سرور یافت نشد، فقط از دیتابیس حذف شد."
 
             db.delete(cfg)
             db.commit()
-            await callback.message.answer(
-                f"✅ کانفیگ {client_ip} حذف شد.\n{server_msg}".strip(),
-                parse_mode="HTML",
-            )
+
+            delete_msg = f"✅ کانفیگ {client_ip} حذف شد."
+            if server_msg:
+                delete_msg += f"\n{server_msg}"
+            await callback.message.answer(delete_msg.strip(), parse_mode="HTML")
 
             configs = db.query(WireGuardConfig).filter(WireGuardConfig.user_telegram_id == str(user_id)).all()
-            await callback.message.answer("🔗 کانفیگ‌های شما:", reply_markup=get_user_configs_keyboard(configs), parse_mode="HTML")
+            if configs:
+                await callback.message.answer("🔗 کانفیگ‌های شما:", reply_markup=get_user_configs_keyboard(configs), parse_mode="HTML")
+            else:
+                await callback.message.answer("🔗 شما هیچ کانفیگ فعالی ندارید.", parse_mode="HTML")
         finally:
             db.close()
 
