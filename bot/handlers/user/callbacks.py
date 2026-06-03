@@ -400,12 +400,13 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
                 return
 
             client_ip = cfg.client_ip
-
-            try:
-                import accounts
-                server = db.query(Server).filter(Server.id == cfg.server_id, Server.is_active == True).first()
-                if server:
-                    accounts.delete_wireguard_peer(
+            server_msg = ""
+            import accounts
+            server = db.query(Server).filter(Server.id == cfg.server_id, Server.is_active == True).first()
+            if server:
+                deleted = False
+                try:
+                    deleted = accounts.delete_wireguard_peer(
                         mikrotik_host=server.domain or server.host,
                         mikrotik_user=server.username,
                         mikrotik_pass=server.password,
@@ -414,12 +415,22 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
                         client_ip=client_ip,
                         fallback_host=server.host,
                     )
-            except Exception as e:
-                print(f"Server delete error: {e}")
+                except Exception as e:
+                    server_msg = "❗ اتصال به سرور برقرار نشد، فقط از دیتابیس حذف شد."
+                else:
+                    if deleted:
+                        server_msg = "✅ اکانت از روی سرور حذف شد."
+                    else:
+                        server_msg = "⚠️ اکانت روی سرور یافت نشد، فقط از دیتابیس حذف شد."
+            else:
+                server_msg = "⚠️ سرور یافت نشد، فقط از دیتابیس حذف شد."
 
             db.delete(cfg)
             db.commit()
-            await callback.message.answer(f"✅ کانفیگ {client_ip} با موفقیت از سرور حذف شد.", parse_mode="HTML")
+            await callback.message.answer(
+                f"✅ کانفیگ {client_ip} حذف شد.\n{server_msg}".strip(),
+                parse_mode="HTML",
+            )
 
             configs = db.query(WireGuardConfig).filter(WireGuardConfig.user_telegram_id == str(user_id)).all()
             await callback.message.answer("🔗 کانفیگ‌های شما:", reply_markup=get_user_configs_keyboard(configs), parse_mode="HTML")
