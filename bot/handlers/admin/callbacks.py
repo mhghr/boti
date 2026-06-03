@@ -481,30 +481,36 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
                 return
 
             client_ip = config.client_ip
-            user_tg_id = config.user_telegram_id
+            server = db.query(Server).filter(Server.id == config.server_id, Server.is_active == True).first()
+            if not server:
+                await callback.message.answer("❌ سرور این کانفیگ یافت نشد؛ حذف انجام نشد.", parse_mode="HTML")
+                return
 
-            # Delete from MikroTik
             try:
                 import accounts
-                server = db.query(Server).filter(Server.id == config.server_id, Server.is_active == True).first()
-                if server:
-                    accounts.delete_wireguard_peer(
-                        mikrotik_host=server.host,
-                        mikrotik_user=server.username,
-                        mikrotik_pass=server.password,
-                        mikrotik_port=server.api_port,
-                        wg_interface=server.wg_interface,
-                        client_ip=client_ip
-                    )
+                deleted = accounts.delete_wireguard_peer(
+                    mikrotik_host=server.host,
+                    mikrotik_user=server.username,
+                    mikrotik_pass=server.password,
+                    mikrotik_port=server.api_port,
+                    wg_interface=server.wg_interface,
+                    client_ip=client_ip,
+                    fallback_host=server.domain or server.host,
+                )
             except Exception as e:
                 print(f"MikroTik delete error: {e}")
+                await callback.message.answer("❌ حذف اکانت از روی سرور ناموفق بود؛ کانفیگ حذف نشد.", parse_mode="HTML")
+                return
 
-            # Delete from database
+            if not deleted:
+                await callback.message.answer("❌ حذف اکانت از روی سرور ناموفق بود؛ کانفیگ حذف نشد.", parse_mode="HTML")
+                return
+
             db.delete(config)
             db.commit()
 
             await callback.message.answer(
-                f"✅ کانفیگ {client_ip} حذف شد.",
+                f"✅ کانفیگ {client_ip} با موفقیت از سرور و دیتابیس حذف شد.",
                 parse_mode="HTML"
             )
         finally:
