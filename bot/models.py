@@ -68,6 +68,7 @@ class Server(Base):
     location = Column(String, nullable=True)
     service_type_id = Column(Integer, ForeignKey("service_types.id"), nullable=False, index=True)
     host = Column(String, nullable=False)
+    domain = Column(String, nullable=True)
     api_port = Column(Integer, default=22)
     username = Column(String, nullable=True)
     password = Column(String, nullable=True)
@@ -107,7 +108,7 @@ class PlanServerMap(Base):
     __tablename__ = "plan_server_map"
 
     id = Column(Integer, primary_key=True, index=True)
-    plan_id = Column(Integer, ForeignKey("plans.id"), nullable=False, index=True)
+    plan_id = Column(Integer, ForeignKey("plans.id", ondelete="CASCADE"), nullable=False, index=True)
     server_id = Column(Integer, ForeignKey("servers.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

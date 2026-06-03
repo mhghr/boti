@@ -584,7 +584,7 @@ def get_servers_keyboard(server_rows: list, service_type_id: int, server_health_
         health = server_health_map.get(srv.id)
         is_ok = bool(srv.is_active and health is True)
         status_dot = "🟢" if is_ok else "🔴"
-        buttons.append([InlineKeyboardButton(text=f"{status_dot} {srv.name} ({srv.host})", callback_data=f"server_view_{srv.id}")])
+        buttons.append([InlineKeyboardButton(text=f"{status_dot} {srv.name} ({srv.domain or srv.host})", callback_data=f"server_view_{srv.id}")])
     buttons.append([InlineKeyboardButton(text="➕ افزودن سرور", callback_data=f"server_add_{service_type_id}")])
     buttons.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_servers")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -594,8 +594,9 @@ def get_server_detail_keyboard(server, service_type_id: int, field_statuses: dic
     field_statuses = field_statuses or {}
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"⚪ نام: {server.name}", callback_data=f"server_field_{server.id}_name")],
-        [InlineKeyboardButton(text=f"{_status_dot(field_statuses.get('host'))} آی‌پی/هاست: {server.host}", callback_data=f"server_field_{server.id}_host")],
-        [InlineKeyboardButton(text=f"⚪ پورت API: {server.api_port}", callback_data=f"server_field_{server.id}_api_port")],
+        [InlineKeyboardButton(text=f"{_status_dot(field_statuses.get('host'))} آی‌پی: {server.host}", callback_data=f"server_field_{server.id}_host")],
+        [InlineKeyboardButton(text=f"⚪ دامنه: {server.domain or '-'}", callback_data=f"server_field_{server.id}_domain")],
+        [InlineKeyboardButton(text=f"⚪ پورت SSH: {server.api_port}", callback_data=f"server_field_{server.id}_api_port")],
         [InlineKeyboardButton(text=f"⚪ یوزرنیم: {server.username or '-'}", callback_data=f"server_field_{server.id}_username")],
         [InlineKeyboardButton(text=f"⚪ پسورد: {'***' if server.password else '-'}", callback_data=f"server_field_{server.id}_password")],
         [InlineKeyboardButton(text=f"{_status_dot(field_statuses.get('wg_interface'))} اینترفیس: {server.wg_interface or '-'}", callback_data=f"server_field_{server.id}_wg_interface")],
@@ -664,15 +665,15 @@ def get_found_configs_keyboard(configs: list):
 def get_server_detail_keyboard(server, service_type_id: int, field_statuses: dict | None = None):
     field_statuses = field_statuses or {}
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"???: {server.name}", callback_data=f"server_field_{server.id}_name")],
-        [InlineKeyboardButton(text=f"{_status_dot(field_statuses.get('host'))} ????: {server.host}", callback_data=f"server_field_{server.id}_host")],
-        [InlineKeyboardButton(text=f"{_status_dot(field_statuses.get('ssh_login'))} ???? SSH: {server.api_port}", callback_data=f"server_field_{server.id}_api_port")],
-        [InlineKeyboardButton(text=f"??????? ?????: {server.username or '-'}", callback_data=f"server_field_{server.id}_username")],
-        [InlineKeyboardButton(text=f"????? ?????: {'***' if server.password else '-'}", callback_data=f"server_field_{server.id}_password")],
-        [InlineKeyboardButton(text=f"{_status_dot(field_statuses.get('useradd'))} ????? ???? ????", callback_data="server_readonly")],
-        [InlineKeyboardButton(text=f"?????: {server.capacity}", callback_data=f"server_field_{server.id}_capacity")],
-        [InlineKeyboardButton(text="???", callback_data=f"server_delete_{server.id}")],
-        [InlineKeyboardButton(text="??????", callback_data=f"admin_servers_type_{service_type_id}")],
+        [InlineKeyboardButton(text=f"Name: {server.name}", callback_data=f"server_field_{server.id}_name")],
+        [InlineKeyboardButton(text=f"{_status_dot(field_statuses.get('host'))} IP: {server.host}", callback_data=f"server_field_{server.id}_host")],
+        [InlineKeyboardButton(text=f"Domain: {server.domain or '-'}", callback_data=f"server_field_{server.id}_domain")],
+        [InlineKeyboardButton(text=f"Port: {server.api_port}", callback_data=f"server_field_{server.id}_api_port")],
+        [InlineKeyboardButton(text=f"Username: {server.username or '-'}", callback_data=f"server_field_{server.id}_username")],
+        [InlineKeyboardButton(text=f"Password: {'***' if server.password else '-'}", callback_data=f"server_field_{server.id}_password")],
+        [InlineKeyboardButton(text=f"Capacity: {server.capacity}", callback_data=f"server_field_{server.id}_capacity")],
+        [InlineKeyboardButton(text="Delete", callback_data=f"server_delete_{server.id}")],
+        [InlineKeyboardButton(text="Back", callback_data=f"admin_servers_type_{service_type_id}")],
     ])
 
 
@@ -726,7 +727,8 @@ def get_server_detail_keyboard(server, service_type_id: int, field_statuses: dic
     field_statuses = field_statuses or {}
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"Name: {server.name}", callback_data=f"server_field_{server.id}_name")],
-        [InlineKeyboardButton(text=f"{_status_dot(field_statuses.get('host'))} Host: {server.host}", callback_data=f"server_field_{server.id}_host")],
+        [InlineKeyboardButton(text=f"{_status_dot(field_statuses.get('host'))} IP: {server.host}", callback_data=f"server_field_{server.id}_host")],
+        [InlineKeyboardButton(text=f"Domain: {server.domain or '-'}", callback_data=f"server_field_{server.id}_domain")],
         [InlineKeyboardButton(text=f"{_status_dot(field_statuses.get('ssh_login'))} Port: {server.api_port}", callback_data=f"server_field_{server.id}_api_port")],
         [InlineKeyboardButton(text=f"Username: {server.username or '-'}", callback_data=f"server_field_{server.id}_username")],
         [InlineKeyboardButton(text=f"Password: {'***' if server.password else '-'}", callback_data=f"server_field_{server.id}_password")],

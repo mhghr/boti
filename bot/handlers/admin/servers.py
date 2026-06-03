@@ -65,7 +65,8 @@ async def handle_server_management_callbacks(callback: CallbackQuery, bot, data:
         prompts = {
             "name": "نام جدید سرور را وارد کنید:",
             "location": "لوکیشن جدید سرور را وارد کنید:",
-            "host": "آی‌پی/هاست جدید را وارد کنید:",
+            "host": "آی‌پی جدید را وارد کنید:",
+            "domain": "دامنه جدید را وارد کنید:",
             "api_port": "پورت SSH جدید را وارد کنید:",
             "username": "یوزرنیم لاگین SSH جدید را وارد کنید:",
             "password": "پسورد لاگین SSH جدید را وارد کنید:",

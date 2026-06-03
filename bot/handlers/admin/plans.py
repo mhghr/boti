@@ -347,6 +347,7 @@ async def handle_plan_management_callbacks(callback: CallbackQuery, bot, data: s
             plan = db.query(Plan).filter(Plan.id == plan_id).first()
             if plan:
                 plan_name = plan.name
+                db.query(PlanServerMap).filter(PlanServerMap.plan_id == plan_id).delete()
                 db.delete(plan)
                 db.commit()
                 await callback.message.answer(f"✅ پلن «{plan_name}» با موفقیت حذف شد.", parse_mode="HTML")

@@ -10,7 +10,7 @@ from aiogram import Dispatcher
 from aiogram.types import Message, CallbackQuery, FSInputFile, BufferedInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
 from database import SessionLocal, engine
-from models import User, Panel, Plan, PaymentReceipt, WireGuardConfig, GiftCode, ServiceType, Server, ServiceTutorial, Representative
+from models import User, Panel, Plan, PlanServerMap, PaymentReceipt, WireGuardConfig, GiftCode, ServiceType, Server, ServiceTutorial, Representative
 from config import (
     CHANNEL_ID, CHANNEL_USERNAME, ADMIN_IDS,
     admin_plan_state, admin_create_account_state, user_payment_state,
@@ -419,7 +419,8 @@ def parse_ip_range(input_str: str) -> dict:
 def get_server_field_prompt(field: str, step_num: int = None, total_steps: int = None) -> tuple:
     prompts = {
         "name": ("نام سرور را وارد کنید:", False),
-        "host": ("IP/Host سرور را وارد کنید:", False),
+        "host": ("IP سرور را وارد کنید:", False),
+        "domain": ("دامنه سرور را وارد کنید (اختیاری):", False),
         "api_port": ("پورت SSH سرور را وارد کنید. مثال: 22", False),
         "username": ("یوزرنیم لاگین SSH سرور را وارد کنید:", False),
         "password": ("پسورد لاگین SSH سرور را وارد کنید:", False),
@@ -436,7 +437,7 @@ def get_server_field_prompt(field: str, step_num: int = None, total_steps: int =
 
 
 def get_server_creation_steps():
-    return ["name", "host", "api_port", "username", "password", "wg_interface", "wg_server_public_key", "wg_server_endpoint", "wg_server_port", "wg_client_network_base", "wg_client_dns", "capacity"]
+    return ["name", "host", "domain", "api_port", "username", "password", "wg_interface", "wg_server_public_key", "wg_server_endpoint", "wg_server_port", "wg_client_network_base", "wg_client_dns", "capacity"]
 
 
 

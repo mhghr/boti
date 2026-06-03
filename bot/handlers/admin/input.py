@@ -467,6 +467,7 @@ async def handle_admin_input(message: Message):
                     location=state.get("location"),
                     service_type_id=state.get("service_type_id"),
                     host=state.get("host"),
+                    domain=state.get("domain") or None,
                     api_port=int(normalize_numbers(state.get("api_port", "22")) or 22),
                     username=state.get("username"),
                     password=state.get("password"),

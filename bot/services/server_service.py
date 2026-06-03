@@ -3,13 +3,24 @@ import socket
 import paramiko
 
 
+def _resolve_connect_host(host: str, fallback_host: str | None = None) -> str:
+    if not host:
+        return fallback_host or host
+    try:
+        socket.getaddrinfo(host, 22, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        return host
+    except socket.gaierror:
+        return fallback_host or host
+
+
 def check_server_connection(server) -> tuple[bool, str]:
     try:
+        host = _resolve_connect_host(server.domain or server.host, server.host)
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
             client.connect(
-                server.host,
+                host,
                 port=server.api_port or 22,
                 username=server.username or "",
                 password=server.password or "",
@@ -32,7 +43,7 @@ def evaluate_server_parameters(server) -> dict:
         "useradd": False,
     }
 
-    host = (server.host or "").strip()
+    host = _resolve_connect_host(server.domain or server.host, server.host)
     api_port = server.api_port
     username = (server.username or "").strip()
     password = (server.password or "").strip()

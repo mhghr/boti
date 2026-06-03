@@ -146,6 +146,7 @@ def init_db():
         conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS service_type_id INTEGER"))
         conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS location VARCHAR"))
         conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS host VARCHAR"))
+        conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS domain VARCHAR"))
         conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS api_port INTEGER DEFAULT 8728"))
         conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS username VARCHAR"))
         conn.execute(text("ALTER TABLE servers ADD COLUMN IF NOT EXISTS password VARCHAR"))
@@ -190,6 +191,27 @@ def init_db():
             pass
         try:
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_plan_server_map_plan_id ON plan_server_map(plan_id)"))
+        except Exception:
+            pass
+        try:
+            conn.execute(text("""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1
+                        FROM pg_constraint
+                        WHERE conname = 'plan_server_map_plan_id_fkey'
+                          AND confdeltype = 'a'
+                    ) THEN
+                        ALTER TABLE plan_server_map
+                        DROP CONSTRAINT plan_server_map_plan_id_fkey,
+                        ADD CONSTRAINT plan_server_map_plan_id_fkey
+                        FOREIGN KEY (plan_id) REFERENCES plans(id)
+                        ON DELETE CASCADE;
+                    END IF;
+                END;
+                $$;
+            """))
         except Exception:
             pass
         try:

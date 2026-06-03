@@ -10,6 +10,7 @@ import json
 import logging
 import secrets
 import shlex
+import socket
 import string
 import sys
 from datetime import datetime, timedelta
@@ -40,14 +41,26 @@ except ImportError as e:
     QRCODE_AVAILABLE = False
 
 
-def _open_ssh_client(host: str, port: int, username: str, password: str):
+def _resolve_connect_host(host: str, fallback_host: str | None = None) -> str:
+    if not host:
+        return fallback_host or host
+    try:
+        socket.getaddrinfo(host, 22, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        return host
+    except socket.gaierror:
+        return fallback_host or host
+
+
+def _open_ssh_client(host: str, port: int, username: str, password: str, fallback_host: str | None = None):
     if not PARAMIKO_AVAILABLE:
         raise RuntimeError("paramiko module not installed")
+
+    resolved = _resolve_connect_host(host, fallback_host)
 
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     client.connect(
-        hostname=host,
+        hostname=resolved,
         port=int(port or 22),
         username=username,
         password=password,
@@ -265,6 +278,7 @@ def create_wireguard_account(
     peer_name_prefix: str = None,
     server_name: str = None,
     service_type_code: str = None,
+    server_host_fallback: str = None,
 ) -> dict:
     if not PARAMIKO_AVAILABLE:
         return {"success": False, "error": "ماژول paramiko نصب نشده است."}
@@ -275,7 +289,7 @@ def create_wireguard_account(
 
     ssh = None
     try:
-        ssh = _open_ssh_client(server_host, server_port, server_login_username, server_login_password)
+        ssh = _open_ssh_client(server_host, server_port, server_login_username, server_login_password, fallback_host=server_host_fallback)
         svc_code = service_type_code or "ssh"
         srv_name = server_name or ""
         random_digits = str(secrets.randbelow(9000) + 1000)
@@ -354,10 +368,10 @@ def create_wireguard_account(
             ssh.close()
 
 
-def _change_user_state(server_host: str, server_port: int, login_user: str, login_password: str, account_username: str, command: str) -> bool:
+def _change_user_state(server_host: str, server_port: int, login_user: str, login_password: str, account_username: str, command: str, fallback_host: str | None = None) -> bool:
     ssh = None
     try:
-        ssh = _open_ssh_client(server_host, server_port, login_user, login_password)
+        ssh = _open_ssh_client(server_host, server_port, login_user, login_password, fallback_host=fallback_host)
         exit_code, _, err = _run_privileged_command(ssh, command, login_password)
         if exit_code != 0:
             logger.warning("SSH user command failed for %s: %s", account_username, err.strip())

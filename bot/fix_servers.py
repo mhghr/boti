@@ -18,6 +18,13 @@ with engine.begin() as conn:
     except Exception as e:
         print(f'host: {e}')
     
+    # Add domain
+    try:
+        conn.execute(text('ALTER TABLE servers ADD COLUMN domain VARCHAR'))
+        print('Added domain')
+    except Exception as e:
+        print(f'domain: {e}')
+    
     # Add api_port
     try:
         conn.execute(text('ALTER TABLE servers ADD COLUMN api_port INTEGER DEFAULT 8728'))
