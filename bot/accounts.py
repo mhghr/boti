@@ -412,7 +412,7 @@ def reset_wireguard_peer_traffic(mikrotik_host: str, mikrotik_user: str, mikroti
     return True
 
 
-def delete_wireguard_peer(mikrotik_host: str, mikrotik_user: str, mikrotik_pass: str, mikrotik_port: int, wg_interface: str, client_ip: str):
+def delete_wireguard_peer(mikrotik_host: str, mikrotik_user: str, mikrotik_pass: str, mikrotik_port: int, wg_interface: str, client_ip: str, fallback_host: str | None = None):
     return _change_user_state(
         mikrotik_host,
         mikrotik_port,
@@ -420,6 +420,7 @@ def delete_wireguard_peer(mikrotik_host: str, mikrotik_user: str, mikrotik_pass:
         mikrotik_pass,
         client_ip,
         f"userdel -r {shlex.quote(client_ip)} >/dev/null 2>&1 || userdel {shlex.quote(client_ip)}",
+        fallback_host=fallback_host,
     )
 
 

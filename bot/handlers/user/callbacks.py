@@ -399,10 +399,30 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
                 await callback.message.answer("❌ کانفیگ یافت نشد.", parse_mode="HTML")
                 return
 
+            client_ip = cfg.client_ip
+
+            try:
+                import accounts
+                server = db.query(Server).filter(Server.id == cfg.server_id, Server.is_active == True).first()
+                if server:
+                    accounts.delete_wireguard_peer(
+                        mikrotik_host=server.domain or server.host,
+                        mikrotik_user=server.username,
+                        mikrotik_pass=server.password,
+                        mikrotik_port=server.api_port,
+                        wg_interface=server.wg_interface,
+                        client_ip=client_ip,
+                        fallback_host=server.host,
+                    )
+            except Exception as e:
+                print(f"Server delete error: {e}")
 
             db.delete(cfg)
             db.commit()
-            await callback.message.answer("✅ کانفیگ حذف شد.", parse_mode="HTML")
+            await callback.message.answer(f"✅ کانفیگ {client_ip} با موفقیت از سرور حذف شد.", parse_mode="HTML")
+
+            configs = db.query(WireGuardConfig).filter(WireGuardConfig.user_telegram_id == str(user_id)).all()
+            await callback.message.answer("🔗 کانفیگ‌های شما:", reply_markup=get_user_configs_keyboard(configs), parse_mode="HTML")
         finally:
             db.close()
 
