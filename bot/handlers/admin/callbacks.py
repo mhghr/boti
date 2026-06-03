@@ -452,6 +452,7 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
         if not is_admin(user_id):
             await callback.answer("❌ دسترسی ندارید.", show_alert=True)
             return
+        await callback.answer()
         config_id = int(data.replace("admin_cfg_delete_", ""))
         db = SessionLocal()
         try:
@@ -465,6 +466,9 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
                 reply_markup=get_admin_config_confirm_delete_keyboard(config.id),
                 parse_mode="HTML"
             )
+        except Exception as e:
+            print(f"Unexpected admin delete prompt error ({config_id}): {e}")
+            await callback.message.answer("❌ نمایش تایید حذف به مشکل خورد.", parse_mode="HTML")
         finally:
             db.close()
 
@@ -472,6 +476,7 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
         if not is_admin(user_id):
             await callback.answer("❌ دسترسی ندارید.", show_alert=True)
             return
+        await callback.answer()
         config_id = int(data.replace("admin_cfg_delete_confirm_", ""))
         db = SessionLocal()
         try:
@@ -513,6 +518,9 @@ async def handle_admin_callbacks(callback: CallbackQuery, bot, data: str, user_i
                 f"✅ کانفیگ {client_ip} با موفقیت از سرور و دیتابیس حذف شد.",
                 parse_mode="HTML"
             )
+        except Exception as e:
+            print(f"Unexpected admin config delete error ({config_id}): {e}")
+            await callback.message.answer("❌ حذف کانفیگ به مشکل خورد. دوباره تلاش کنید.", parse_mode="HTML")
         finally:
             db.close()
 

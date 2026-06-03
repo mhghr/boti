@@ -391,6 +391,7 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
             db.close()
 
     elif data.startswith("cfg_delete_confirm_"):
+        await callback.answer()
         config_id = int(data.replace("cfg_delete_confirm_", ""))
         db = SessionLocal()
         try:
@@ -436,13 +437,18 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
                 await callback.message.answer("🔗 کانفیگ‌های شما:", reply_markup=get_user_configs_keyboard(configs), parse_mode="HTML")
             else:
                 await callback.message.answer("🔗 شما هیچ کانفیگ فعالی ندارید.", parse_mode="HTML")
+        except Exception as e:
+            print(f"Unexpected user config delete error ({config_id}): {e}")
+            await callback.message.answer("❌ حذف کانفیگ به مشکل خورد. دوباره تلاش کنید.", parse_mode="HTML")
         finally:
             db.close()
 
     elif data.startswith("cfg_delete_cancel_"):
+        await callback.answer("حذف لغو شد.", show_alert=False)
         await callback.message.answer("❎ حذف لینک لغو شد.", parse_mode="HTML")
 
     elif data.startswith("cfg_delete_"):
+        await callback.answer()
         config_id = int(data.replace("cfg_delete_", ""))
         db = SessionLocal()
         try:
@@ -455,6 +461,9 @@ async def handle_user_callbacks(callback: CallbackQuery, bot, data: str, user_id
                 reply_markup=get_user_config_confirm_delete_keyboard(config_id),
                 parse_mode="HTML"
             )
+        except Exception as e:
+            print(f"Unexpected user delete prompt error ({config_id}): {e}")
+            await callback.message.answer("❌ نمایش تایید حذف به مشکل خورد.", parse_mode="HTML")
         finally:
             db.close()
 
